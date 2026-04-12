@@ -1,38 +1,24 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
-import { useIsAuthenticated } from '@azure/msal-react'
-import NotFoundPage from '@/features/not-found/pages/NotFoundPage'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import MainLayout from '@/components/layouts/MainLayout/MainLayout'
-import { LoginPage } from '@/features/auth/LoginPage'
-import { LoadingScreen } from '@/components/LoadingScreen'
-
-const HomePage = lazy(() => import('@/features/home/pages/HomePage'))
-const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'))
-
-function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
-  const isAuthenticated = useIsAuthenticated()
-  if (!isAuthenticated) return <LoginPage />
-  return <>{children}</>
-}
+import NotFoundPage from '@/features/not-found/pages/NotFoundPage'
+import JobsListPage from '@/features/jobs/pages/JobsListPage'
+import CreateJobPage from '@/features/jobs/pages/CreateJobPage'
+import JobDetailPage from '@/features/jobs/pages/JobDetailPage'
+import ReportPage from '@/features/reports/pages/ReportPage'
 
 export function AppRouter() {
   return (
     <BrowserRouter>
-      <Suspense fallback={<LoadingScreen />}>
-        <Routes>
-          <Route
-            element={
-              <ProtectedRoute>
-                <MainLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path='/' element={<HomePage />} />
-            <Route path='/settings' element={<SettingsPage />} />
-            <Route path='*' element={<NotFoundPage />} />
-          </Route>
-        </Routes>
-      </Suspense>
+      <Routes>
+        <Route element={<MainLayout />}>
+          <Route path='/' element={<JobsListPage />} />
+          <Route path='/jobs/new' element={<CreateJobPage />} />
+          <Route path='/jobs/:jobId' element={<JobDetailPage />} />
+          <Route path='/jobs/:jobId/report' element={<ReportPage />} />
+          <Route path='/settings' element={<Navigate to='/' replace />} />
+          <Route path='*' element={<NotFoundPage />} />
+        </Route>
+      </Routes>
     </BrowserRouter>
   )
 }

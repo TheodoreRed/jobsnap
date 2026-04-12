@@ -1,0 +1,58 @@
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Button, Stack, Typography } from '@mui/material'
+
+import { apiRequest } from '@/lib/api'
+
+interface ReportItem {
+  id: string
+  generatedAt: string
+  fileReference: string
+}
+
+export default function ReportPage() {
+  const { jobId } = useParams()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [report, setReport] = useState<ReportItem | null>(
+    location.state?.objectUrl
+      ? {
+          id: 'latest',
+          generatedAt: location.state.generatedAt,
+          fileReference: location.state.objectUrl,
+        }
+      : null
+  )
+
+  useEffect(() => {
+    if (report || !jobId) return
+    void apiRequest<{ items: ReportItem[] }>(`/jobs/${jobId}/reports`).then(response => {
+      if (response.items[0]) setReport(response.items[0])
+    })
+  }, [jobId, report])
+
+  if (!report) return <Typography>No report available yet.</Typography>
+
+  return (
+    <Stack spacing={2}>
+      <Typography variant='h5' fontWeight={700}>
+        Generated Report
+      </Typography>
+      <Typography variant='body2'>Generated at: {new Date(report.generatedAt).toLocaleString()}</Typography>
+      <Button
+        variant='contained'
+        onClick={() => {
+          const link = document.createElement('a')
+          link.href = report.fileReference
+          link.download = 'field-service-report.pdf'
+          link.click()
+        }}
+      >
+        Download PDF
+      </Button>
+      <Button variant='outlined' onClick={() => navigate(`/jobs/${jobId}`)}>
+        Back to Job
+      </Button>
+    </Stack>
+  )
+}
