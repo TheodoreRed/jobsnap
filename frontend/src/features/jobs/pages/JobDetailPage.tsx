@@ -345,7 +345,7 @@ export default function JobDetailPage() {
       </Stack>
 
       <Grid container spacing={2}>
-        <Grid size={{ xs: 12, lg: 5 }}>
+        <Grid size={{ xs: 12, md: 5 }}>
           <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Stack spacing={1.5}>
@@ -409,7 +409,7 @@ export default function JobDetailPage() {
           </Card>
         </Grid>
 
-        <Grid size={{ xs: 12, lg: 7 }}>
+        <Grid size={{ xs: 12, md: 7 }}>
           <Stack spacing={1.5}>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -433,7 +433,13 @@ export default function JobDetailPage() {
                         component='img'
                         src={photo.fileReference}
                         alt='job'
-                        sx={{ width: { xs: '100%', md: 260 }, maxHeight: 220, borderRadius: 1, objectFit: 'cover', flexShrink: 0 }}
+                        sx={{
+                          width: { xs: '100%', md: 220 },
+                          maxHeight: { xs: 180, md: 160 },
+                          borderRadius: 1,
+                          objectFit: 'cover',
+                          flexShrink: 0,
+                        }}
                       />
                       <Stack spacing={1} sx={{ flex: 1 }}>
                         <Typography variant='caption' color='text.secondary'>
