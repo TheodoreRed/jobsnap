@@ -272,6 +272,12 @@ export default function JobDetailPage() {
           <Stack spacing={1.5}>
             <TextField
               variant='outlined'
+              label='Job Title'
+              defaultValue={detail.job.title}
+              onBlur={e => void updateJob({ title: e.target.value })}
+            />
+            <TextField
+              variant='outlined'
               label='Customer Name'
               defaultValue={detail.job.customerName}
               onBlur={e => void updateJob({ customerName: e.target.value })}
@@ -294,6 +300,14 @@ export default function JobDetailPage() {
               <MenuItem value='In Progress'>In Progress</MenuItem>
               <MenuItem value='Complete'>Complete</MenuItem>
             </TextField>
+            <TextField
+              variant='outlined'
+              label='Description'
+              multiline
+              minRows={2}
+              defaultValue={detail.job.description}
+              onBlur={e => void updateJob({ description: e.target.value })}
+            />
             <TextField
               variant='outlined'
               label='Job Notes'
@@ -320,6 +334,9 @@ export default function JobDetailPage() {
             <CardContent>
               <Stack spacing={1}>
                 <Box component='img' src={photo.fileReference} alt='job' sx={{ width: '100%', maxHeight: 260, objectFit: 'cover' }} />
+                <Typography variant='caption' color='text.secondary'>
+                  Uploaded {new Date(photo.uploadedAt).toLocaleString()}
+                </Typography>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                   <TextField
                     variant='outlined'

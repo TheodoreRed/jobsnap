@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Button, Stack, Typography } from '@mui/material'
+import { Button, Card, CardContent, Stack, Typography } from '@mui/material'
 
 import { apiRequest } from '@/lib/api'
 
@@ -38,7 +38,15 @@ export default function ReportPage() {
       <Typography variant='h5' fontWeight={700}>
         Generated Report
       </Typography>
-      <Typography variant='body2'>Generated at: {new Date(report.generatedAt).toLocaleString()}</Typography>
+      <Card variant='outlined'>
+        <CardContent>
+          <Stack spacing={1}>
+            <Typography variant='body2'>Generated at: {new Date(report.generatedAt).toLocaleString()}</Typography>
+            <Typography variant='body2'>File: field-service-report.pdf</Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+      <iframe title='report-preview' src={report.fileReference} style={{ width: '100%', minHeight: 540, border: '1px solid #d0d7de', borderRadius: 8 }} />
       <Button
         variant='contained'
         onClick={() => {
