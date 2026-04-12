@@ -1,8 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, CardContent, Stack, Typography } from '@mui/material'
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  Divider,
+  FormControlLabel,
+  MenuItem,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material'
 
+import type { JobDetailResponse } from '@/features/jobs/types'
 import { apiRequest } from '@/lib/api'
+import { buildReportPdf, defaultReportOptions, defaultReportText, type ReportGeneratorOptions, type ReportStylePreset } from '../report-generator'
 
 interface ReportItem {
   id: string
@@ -11,10 +25,15 @@ interface ReportItem {
   fileName?: string
 }
 
+const styleOptions: ReportStylePreset[] = ['Modern Blue', 'Minimal Gray', 'Bold Dark']
+
 export default function ReportPage() {
   const { jobId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const [error, setError] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [jobDetail, setJobDetail] = useState<JobDetailResponse | null>(null)
   const [report, setReport] = useState<ReportItem | null>(
     location.state?.objectUrl
       ? {
@@ -26,23 +45,169 @@ export default function ReportPage() {
       : null
   )
 
+  const [options, setOptions] = useState<ReportGeneratorOptions>(() => defaultReportOptions(navigator.language))
+
+  useEffect(() => {
+    if (!jobId) return
+    void apiRequest<JobDetailResponse>(`/jobs/${jobId}`)
+      .then(setJobDetail)
+      .catch((err: Error) => setError(err.message))
+  }, [jobId])
+
   useEffect(() => {
     if (report || !jobId) return
-    void apiRequest<{ items: ReportItem[] }>(`/jobs/${jobId}/reports`).then(response => {
-      if (response.items[0]) setReport(response.items[0])
-    })
+    void apiRequest<{ items: ReportItem[] }>(`/jobs/${jobId}/reports`)
+      .then(response => {
+        if (response.items[0]) setReport(response.items[0])
+      })
+      .catch((err: Error) => setError(err.message))
   }, [jobId, report])
 
-  if (!report) return <Typography>No report available yet.</Typography>
+  const sortedPhotos = useMemo(() => [...(jobDetail?.photos ?? [])].sort((a, b) => a.orderIndex - b.orderIndex), [jobDetail?.photos])
+
+  const updateText = (key: keyof ReportGeneratorOptions['text'], value: string) => {
+    setOptions(prev => ({ ...prev, text: { ...prev.text, [key]: value } }))
+  }
+
+  const regenerate = async () => {
+    if (!jobId || !jobDetail) return
+    setError('')
+    setIsSaving(true)
+    try {
+      const generated = await buildReportPdf(jobDetail, sortedPhotos, options)
+      await apiRequest(`/jobs/${jobId}/reports`, {
+        method: 'POST',
+        body: JSON.stringify({ fileReference: generated.objectUrl }),
+      })
+      setReport({
+        id: `draft-${Date.now()}`,
+        fileReference: generated.objectUrl,
+        generatedAt: generated.generatedAt,
+        fileName: generated.fileName,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not regenerate report')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const resetLanguage = (locale: string) => {
+    const text = defaultReportText(locale)
+    setOptions(prev => ({ ...prev, locale, text }))
+  }
+
+  if (!report) return <Typography>{error || 'No report available yet.'}</Typography>
 
   const fallbackFileName = `jobsnap-report-${new Date(report.generatedAt).toISOString().slice(0, 10)}.pdf`
   const fileName = report.fileName || fallbackFileName
 
   return (
-    <Stack spacing={2} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 980, mx: 'auto' }}>
       <Typography variant='h5' fontWeight={700}>
-        Generated Report
+        Generated Report Studio
       </Typography>
+      {error ? <Alert severity='error'>{error}</Alert> : null}
+      <Card variant='outlined'>
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant='h6'>Customize language, style, and output</Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+              <TextField
+                select
+                label='Language preset'
+                value={options.locale}
+                onChange={e => resetLanguage(e.target.value)}
+                sx={{ minWidth: 200 }}
+              >
+                <MenuItem value='en-US'>English</MenuItem>
+                <MenuItem value='es-ES'>Español</MenuItem>
+                <MenuItem value='fr-FR'>Français</MenuItem>
+              </TextField>
+              <TextField
+                select
+                label='Report style'
+                value={options.stylePreset}
+                onChange={e => setOptions(prev => ({ ...prev, stylePreset: e.target.value as ReportStylePreset }))}
+                sx={{ minWidth: 220 }}
+              >
+                {styleOptions.map(style => (
+                  <MenuItem key={style} value={style}>
+                    {style}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label='Cover image URL (optional)'
+                value={options.coverImageUrl ?? ''}
+                onChange={e => setOptions(prev => ({ ...prev, coverImageUrl: e.target.value }))}
+                fullWidth
+              />
+            </Stack>
+
+            <Divider />
+
+            <Stack direction={{ xs: 'column', md: 'row' }} gap={1}>
+              <FormControlLabel
+                control={<Switch checked={options.includeCustomer} onChange={e => setOptions(prev => ({ ...prev, includeCustomer: e.target.checked }))} />}
+                label='Include customer'
+              />
+              <FormControlLabel
+                control={<Switch checked={options.includeAddress} onChange={e => setOptions(prev => ({ ...prev, includeAddress: e.target.checked }))} />}
+                label='Include address'
+              />
+              <FormControlLabel
+                control={<Switch checked={options.includeStatus} onChange={e => setOptions(prev => ({ ...prev, includeStatus: e.target.checked }))} />}
+                label='Include status'
+              />
+              <FormControlLabel
+                control={<Switch checked={options.includeWorkOrder} onChange={e => setOptions(prev => ({ ...prev, includeWorkOrder: e.target.checked }))} />}
+                label='Include work order'
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+              <TextField label='Report title' value={options.text.title} onChange={e => updateText('title', e.target.value)} fullWidth />
+              <TextField label='Photo section title' value={options.text.photoSectionPrefix} onChange={e => updateText('photoSectionPrefix', e.target.value)} fullWidth />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+              <TextField label='Generated label' value={options.text.generatedLabel} onChange={e => updateText('generatedLabel', e.target.value)} fullWidth />
+              <TextField label='Page label' value={options.text.pageLabel} onChange={e => updateText('pageLabel', e.target.value)} fullWidth />
+              <TextField label='Notes label' value={options.text.notesLabel} onChange={e => updateText('notesLabel', e.target.value)} fullWidth />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+              <TextField
+                label='Summary closing text'
+                value={options.text.summaryClosing}
+                onChange={e => updateText('summaryClosing', e.target.value)}
+                multiline
+                minRows={2}
+                fullWidth
+              />
+              <TextField
+                label='Image fallback text'
+                value={options.text.imageFailureText}
+                onChange={e => updateText('imageFailureText', e.target.value)}
+                multiline
+                minRows={2}
+                fullWidth
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+              <Button variant='contained' onClick={() => void regenerate()} disabled={isSaving || !jobDetail}>
+                {isSaving ? 'Regenerating...' : 'Apply customization'}
+              </Button>
+              <Button variant='outlined' onClick={() => setOptions(defaultReportOptions(options.locale))}>
+                Reset defaults
+              </Button>
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
+
       <Card variant='outlined'>
         <CardContent>
           <Stack spacing={1}>
@@ -51,7 +216,8 @@ export default function ReportPage() {
           </Stack>
         </CardContent>
       </Card>
-      <iframe title='report-preview' src={report.fileReference} style={{ width: '100%', minHeight: 540, border: '1px solid #d0d7de', borderRadius: 8 }} />
+
+      <iframe title='report-preview' src={report.fileReference} style={{ width: '100%', minHeight: 620, border: '1px solid #d0d7de', borderRadius: 8 }} />
       <Button
         variant='contained'
         onClick={() => {
