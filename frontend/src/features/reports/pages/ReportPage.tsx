@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   Alert,
@@ -28,12 +28,43 @@ interface ReportItem {
 
 const styleOptions: ReportStylePreset[] = ['Modern Blue', 'Minimal Gray', 'Bold Dark']
 
+const presetStoragePrefix = 'jobsnap:report-preset:'
+
+function customerToKey(customerName: string) {
+  return `${presetStoragePrefix}${customerName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+}
+
+function isBlobUrl(value: string) {
+  return value.startsWith('blob:')
+}
+
+function hydrateOptions(savedValue: string | null, fallbackLocale: string): ReportGeneratorOptions {
+  if (!savedValue) return defaultReportOptions(fallbackLocale)
+
+  try {
+    const parsed = JSON.parse(savedValue) as Partial<ReportGeneratorOptions>
+    const locale = typeof parsed.locale === 'string' ? parsed.locale : fallbackLocale
+    const defaults = defaultReportOptions(locale)
+
+    return {
+      ...defaults,
+      ...parsed,
+      text: {
+        ...defaults.text,
+        ...(parsed.text ?? {}),
+      },
+    }
+  } catch {
+    return defaultReportOptions(fallbackLocale)
+  }
+}
+
 export default function ReportPage() {
   const { jobId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
   const [error, setError] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const [isRendering, setIsRendering] = useState(false)
   const [jobDetail, setJobDetail] = useState<JobDetailResponse | null>(null)
   const [report, setReport] = useState<ReportItem | null>(
     location.state?.objectUrl
@@ -45,8 +76,10 @@ export default function ReportPage() {
         }
       : null
   )
-
   const [options, setOptions] = useState<ReportGeneratorOptions>(() => defaultReportOptions(navigator.language))
+
+  const latestBlobUrlRef = useRef<string | null>(location.state?.objectUrl ?? null)
+  const loadedPresetKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!jobId) return
@@ -66,31 +99,78 @@ export default function ReportPage() {
 
   const sortedPhotos = useMemo(() => [...(jobDetail?.photos ?? [])].sort((a, b) => a.orderIndex - b.orderIndex), [jobDetail?.photos])
 
+  const presetKey = useMemo(() => {
+    const customerName = jobDetail?.job.customerName?.trim()
+    if (!customerName) return null
+    return customerToKey(customerName)
+  }, [jobDetail?.job.customerName])
+
+  useEffect(() => {
+    if (!presetKey || loadedPresetKeyRef.current === presetKey) return
+    loadedPresetKeyRef.current = presetKey
+    const saved = localStorage.getItem(presetKey)
+    setOptions(hydrateOptions(saved, navigator.language))
+  }, [presetKey])
+
+  useEffect(() => {
+    if (!presetKey) return
+    const saveTimer = window.setTimeout(() => {
+      localStorage.setItem(presetKey, JSON.stringify(options))
+    }, 300)
+
+    return () => window.clearTimeout(saveTimer)
+  }, [options, presetKey])
+
+  useEffect(() => {
+    if (!jobId || !jobDetail) return
+
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      setIsRendering(true)
+      void (async () => {
+        try {
+          const generated = await buildReportPdf(jobDetail, sortedPhotos, options)
+          if (cancelled) {
+            if (isBlobUrl(generated.objectUrl)) URL.revokeObjectURL(generated.objectUrl)
+            return
+          }
+
+          const previous = latestBlobUrlRef.current
+          if (previous && previous !== generated.objectUrl && isBlobUrl(previous)) {
+            URL.revokeObjectURL(previous)
+          }
+
+          latestBlobUrlRef.current = generated.objectUrl
+          setReport({
+            id: `draft-${Date.now()}`,
+            fileReference: generated.objectUrl,
+            generatedAt: generated.generatedAt,
+            fileName: generated.fileName,
+          })
+          setError('')
+        } catch (err) {
+          if (!cancelled) setError(err instanceof Error ? err.message : 'Could not regenerate report')
+        } finally {
+          if (!cancelled) setIsRendering(false)
+        }
+      })()
+    }, 500)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [jobId, jobDetail, options, sortedPhotos])
+
+  useEffect(() => {
+    return () => {
+      const current = latestBlobUrlRef.current
+      if (current && isBlobUrl(current)) URL.revokeObjectURL(current)
+    }
+  }, [])
+
   const updateText = (key: keyof ReportGeneratorOptions['text'], value: string) => {
     setOptions(prev => ({ ...prev, text: { ...prev.text, [key]: value } }))
-  }
-
-  const regenerate = async () => {
-    if (!jobId || !jobDetail) return
-    setError('')
-    setIsSaving(true)
-    try {
-      const generated = await buildReportPdf(jobDetail, sortedPhotos, options)
-      await apiRequest(`/jobs/${jobId}/reports`, {
-        method: 'POST',
-        body: JSON.stringify({ fileReference: generated.objectUrl }),
-      })
-      setReport({
-        id: `draft-${Date.now()}`,
-        fileReference: generated.objectUrl,
-        generatedAt: generated.generatedAt,
-        fileName: generated.fileName,
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not regenerate report')
-    } finally {
-      setIsSaving(false)
-    }
   }
 
   const resetLanguage = (locale: string) => {
@@ -98,7 +178,9 @@ export default function ReportPage() {
     setOptions(prev => ({ ...prev, locale, text }))
   }
 
-  if (!report) return <Typography>{error || 'No report available yet.'}</Typography>
+  if (!report) {
+    return <Typography>{error || (jobDetail ? 'Building live preview…' : 'No report available yet.')}</Typography>
+  }
 
   const fallbackFileName = `jobsnap-report-${new Date(report.generatedAt).toISOString().slice(0, 10)}.pdf`
   const fileName = report.fileName || fallbackFileName
@@ -116,6 +198,10 @@ export default function ReportPage() {
             <CardContent>
               <Stack spacing={2}>
                 <Typography variant='h6'>Customize language, style, and output</Typography>
+                <Typography variant='body2' color='text.secondary'>
+                  Live preview updates automatically (debounced). Presets are saved per customer.
+                </Typography>
+
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
                   <TextField
                     select
@@ -203,12 +289,12 @@ export default function ReportPage() {
                 </Stack>
 
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-                  <Button variant='contained' onClick={() => void regenerate()} disabled={isSaving || !jobDetail}>
-                    {isSaving ? 'Regenerating...' : 'Apply customization'}
-                  </Button>
                   <Button variant='outlined' onClick={() => setOptions(defaultReportOptions(options.locale))}>
                     Reset defaults
                   </Button>
+                  <Typography variant='body2' color='text.secondary' sx={{ alignSelf: 'center' }}>
+                    {isRendering ? 'Updating preview…' : 'Preview up to date'}
+                  </Typography>
                 </Stack>
               </Stack>
             </CardContent>
@@ -222,6 +308,9 @@ export default function ReportPage() {
                 <Stack spacing={1}>
                   <Typography variant='body2'>Generated at: {new Date(report.generatedAt).toLocaleString()}</Typography>
                   <Typography variant='body2'>File: {fileName}</Typography>
+                  <Typography variant='body2' color='text.secondary'>
+                    Preset profile: {jobDetail?.job.customerName || 'Unknown customer'}
+                  </Typography>
                 </Stack>
               </CardContent>
             </Card>
