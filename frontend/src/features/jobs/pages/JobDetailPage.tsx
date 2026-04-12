@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Alert,
@@ -7,8 +7,10 @@ import {
   Card,
   CardContent,
   Divider,
+  Fab,
   Grid,
   IconButton,
+  LinearProgress,
   MenuItem,
   Stack,
   TextField,
@@ -18,12 +20,21 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import DeleteIcon from '@mui/icons-material/Delete'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
+import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiRequest } from '@/lib/api'
 import type { JobDetailResponse, Photo, PhotoTag } from '../types'
 
 const tags: PhotoTag[] = ['Before', 'During', 'After', 'Other']
+
+interface PendingUpload {
+  id: string
+  previewUrl: string
+  fileName: string
+  uploadedAt: string
+  status: 'uploading' | 'failed'
+}
 
 async function fileToDataUrl(file: File): Promise<string> {
   return await new Promise((resolve, reject) => {
@@ -39,6 +50,11 @@ export default function JobDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([])
+  const [uploadProgress, setUploadProgress] = useState({ uploaded: 0, total: 0 })
+  const galleryInputRef = useRef<HTMLInputElement | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const objectUrlsRef = useRef<Set<string>>(new Set())
 
   const jobQuery = useQuery({
     queryKey: ['job', jobId],
@@ -50,6 +66,17 @@ export default function JobDetailPage() {
   const sortedPhotos = useMemo(
     () => [...(detail?.photos ?? [])].sort((a, b) => a.orderIndex - b.orderIndex),
     [detail?.photos]
+  )
+  const isUploading = uploadProgress.total > 0 && uploadProgress.uploaded < uploadProgress.total
+
+  useEffect(
+    () => () => {
+      for (const objectUrl of objectUrlsRef.current) {
+        URL.revokeObjectURL(objectUrl)
+      }
+      objectUrlsRef.current.clear()
+    },
+    []
   )
 
   const refresh = async () => {
@@ -65,17 +92,57 @@ export default function JobDetailPage() {
   const uploadPhotos = async (files: FileList | null) => {
     if (!files) return
     setError('')
+    const selectedFiles = Array.from(files)
+    const startedAt = new Date().toISOString()
+    const pending = selectedFiles.map((file, index) => {
+      const previewUrl = URL.createObjectURL(file)
+      objectUrlsRef.current.add(previewUrl)
+      return {
+        id: `${Date.now()}-${index}-${file.name}`,
+        previewUrl,
+        fileName: file.name,
+        uploadedAt: startedAt,
+        status: 'uploading' as const,
+      }
+    })
+    setPendingUploads(current => [...pending, ...current])
+    setUploadProgress({ uploaded: 0, total: selectedFiles.length })
+
     try {
-      for (const file of Array.from(files)) {
+      for (const [index, file] of selectedFiles.entries()) {
         const dataUrl = await fileToDataUrl(file)
         await apiRequest(`/jobs/${jobId}/photos`, {
           method: 'POST',
           body: JSON.stringify({ dataUrl, fileName: file.name }),
         })
+        const pendingId = pending[index]?.id
+        if (pendingId) {
+          setPendingUploads(current => {
+            const uploaded = current.find(item => item.id === pendingId)
+            if (uploaded) {
+              URL.revokeObjectURL(uploaded.previewUrl)
+              objectUrlsRef.current.delete(uploaded.previewUrl)
+            }
+            return current.filter(item => item.id !== pendingId)
+          })
+        }
+        setUploadProgress(current => ({ ...current, uploaded: current.uploaded + 1 }))
       }
       await refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Upload failed')
+      setPendingUploads(current => {
+        const next = [...current]
+        for (const item of pending) {
+          const target = next.find(upload => upload.id === item.id)
+          if (target) target.status = 'failed'
+        }
+        return next
+      })
+    } finally {
+      setUploadProgress(current => ({ ...current, total: 0 }))
+      if (galleryInputRef.current) galleryInputRef.current.value = ''
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
     }
   }
 
@@ -221,11 +288,62 @@ export default function JobDetailPage() {
               <Typography variant='h6'>Photos ({sortedPhotos.length})</Typography>
               <Button variant='outlined' component='label'>
                 Upload Photos
-                <input hidden type='file' multiple accept='image/*' onChange={e => void uploadPhotos(e.target.files)} />
+                <input
+                  ref={galleryInputRef}
+                  hidden
+                  type='file'
+                  multiple
+                  accept='image/*'
+                  onChange={e => void uploadPhotos(e.target.files)}
+                />
               </Button>
             </Stack>
 
+            {uploadProgress.total > 0 ? (
+              <Stack spacing={0.5}>
+                <Typography variant='caption' color='text.secondary'>
+                  Uploading {uploadProgress.uploaded}/{uploadProgress.total} photo
+                  {uploadProgress.total === 1 ? '' : 's'}
+                </Typography>
+                <LinearProgress
+                  variant='determinate'
+                  value={(uploadProgress.uploaded / uploadProgress.total) * 100}
+                />
+              </Stack>
+            ) : null}
+
             <Stack spacing={1.5}>
+              {pendingUploads.map(photo => (
+                <Card key={photo.id} sx={{ border: '1px solid', borderColor: 'divider', opacity: 0.85 }}>
+                  <CardContent>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                      <Box
+                        component='img'
+                        src={photo.previewUrl}
+                        alt={photo.fileName}
+                        sx={{
+                          width: { xs: '100%', md: 220 },
+                          maxHeight: { xs: 180, md: 160 },
+                          borderRadius: 1,
+                          objectFit: 'cover',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <Stack spacing={1} sx={{ flex: 1 }}>
+                        <Typography variant='caption' color='text.secondary'>
+                          Captured {new Date(photo.uploadedAt).toLocaleString()}
+                        </Typography>
+                        <Typography variant='body2' color='text.primary'>
+                          {photo.fileName}
+                        </Typography>
+                        <Typography variant='caption' color={photo.status === 'failed' ? 'error.main' : 'text.secondary'}>
+                          {photo.status === 'failed' ? 'Upload failed. Try again.' : 'Uploading...'}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
               {sortedPhotos.map(photo => (
                 <Card key={photo.id} sx={{ border: '1px solid', borderColor: 'divider' }}>
                   <CardContent>
@@ -300,6 +418,32 @@ export default function JobDetailPage() {
           </CardContent>
         </Card>
       ) : null}
+      <input
+        ref={cameraInputRef}
+        hidden
+        type='file'
+        accept='image/*'
+        capture='environment'
+        onChange={e => void uploadPhotos(e.target.files)}
+      />
+      <Fab
+        color='primary'
+        aria-label='Take photo'
+        disabled={isUploading}
+        onClick={() => cameraInputRef.current?.click()}
+        sx={{
+          position: 'fixed',
+          right: 20,
+          bottom: 20,
+          width: 68,
+          height: 68,
+          zIndex: theme => theme.zIndex.tooltip + 1,
+          display: { xs: 'inline-flex', md: 'none' },
+          boxShadow: 6,
+        }}
+      >
+        <CameraAltIcon sx={{ fontSize: 34 }} />
+      </Fab>
     </Stack>
   )
 }
