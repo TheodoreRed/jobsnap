@@ -8,6 +8,7 @@ interface ReportItem {
   id: string
   generatedAt: string
   fileReference: string
+  fileName?: string
 }
 
 export default function ReportPage() {
@@ -20,6 +21,7 @@ export default function ReportPage() {
           id: 'latest',
           generatedAt: location.state.generatedAt,
           fileReference: location.state.objectUrl,
+          fileName: location.state.fileName,
         }
       : null
   )
@@ -33,6 +35,9 @@ export default function ReportPage() {
 
   if (!report) return <Typography>No report available yet.</Typography>
 
+  const fallbackFileName = `jobsnap-report-${new Date(report.generatedAt).toISOString().slice(0, 10)}.pdf`
+  const fileName = report.fileName || fallbackFileName
+
   return (
     <Stack spacing={2} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
       <Typography variant='h5' fontWeight={700}>
@@ -42,7 +47,7 @@ export default function ReportPage() {
         <CardContent>
           <Stack spacing={1}>
             <Typography variant='body2'>Generated at: {new Date(report.generatedAt).toLocaleString()}</Typography>
-            <Typography variant='body2'>File: field-service-report.pdf</Typography>
+            <Typography variant='body2'>File: {fileName}</Typography>
           </Stack>
         </CardContent>
       </Card>
@@ -52,7 +57,7 @@ export default function ReportPage() {
         onClick={() => {
           const link = document.createElement('a')
           link.href = report.fileReference
-          link.download = 'field-service-report.pdf'
+          link.download = fileName
           link.click()
         }}
       >

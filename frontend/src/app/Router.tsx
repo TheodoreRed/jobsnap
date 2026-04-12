@@ -13,6 +13,7 @@ const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPag
 const JobDetailPage = lazy(() => import('@/features/jobs/pages/JobDetailPage'))
 const ReportPage = lazy(() => import('@/features/reports/pages/ReportPage'))
 const AnalyticsPage = lazy(() => import('@/features/analytics/pages/AnalyticsPage'))
+const AboutPage = lazy(() => import('@/features/about/pages/AboutPage'))
 
 function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
   const isAuthenticated = useIsAuthenticated()
@@ -39,6 +40,7 @@ export function AppRouter() {
             <Route path='/jobs/:jobId' element={<JobDetailPage />} />
             <Route path='/jobs/:jobId/report' element={<ReportPage />} />
             <Route path='/settings' element={<SettingsPage />} />
+            <Route path='/about' element={<AboutPage />} />
             <Route path='*' element={<NotFoundPage />} />
           </Route>
         </Routes>
