@@ -181,17 +181,20 @@ ${380 + stream.length}
         <CardContent>
           <Stack spacing={1.5}>
             <TextField
+              variant='outlined'
               label='Customer Name'
               defaultValue={detail.job.customerName}
               onBlur={e => void updateJob({ customerName: e.target.value })}
             />
-            <TextField label='Address' defaultValue={detail.job.address} onBlur={e => void updateJob({ address: e.target.value })} />
+            <TextField variant='outlined' label='Address' defaultValue={detail.job.address} onBlur={e => void updateJob({ address: e.target.value })} />
             <TextField
+              variant='outlined'
               label='Work Order / Invoice Ref'
               defaultValue={detail.job.workOrderReference}
               onBlur={e => void updateJob({ workOrderReference: e.target.value })}
             />
             <TextField
+              variant='outlined'
               select
               label='Status'
               value={detail.job.status}
@@ -202,6 +205,7 @@ ${380 + stream.length}
               <MenuItem value='Complete'>Complete</MenuItem>
             </TextField>
             <TextField
+              variant='outlined'
               label='Job Notes'
               multiline
               minRows={3}
@@ -226,8 +230,9 @@ ${380 + stream.length}
             <CardContent>
               <Stack spacing={1}>
                 <Box component='img' src={photo.fileReference} alt='job' sx={{ width: '100%', maxHeight: 260, objectFit: 'cover' }} />
-                <Stack direction='row' spacing={1}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                   <TextField
+                    variant='outlined'
                     fullWidth
                     size='small'
                     label='Caption'
@@ -235,6 +240,7 @@ ${380 + stream.length}
                     onBlur={e => void patchPhoto(photo.id, { caption: e.target.value })}
                   />
                   <TextField
+                    variant='outlined'
                     select
                     size='small'
                     label='Tag'

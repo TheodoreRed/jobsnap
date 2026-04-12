@@ -45,14 +45,15 @@ export default function JobsListPage() {
         </Button>
       </Stack>
 
-      <Stack direction='row' gap={1}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} gap={1}>
         <TextField
           fullWidth
+          variant='outlined'
           placeholder='Search title, customer, address, work order'
           value={search}
           onChange={event => setSearch(event.target.value)}
         />
-        <TextField select sx={{ minWidth: 170 }} value={status} onChange={event => setStatus(event.target.value as any)}>
+        <TextField select variant='outlined' sx={{ minWidth: { xs: 120, sm: 170 } }} value={status} onChange={event => setStatus(event.target.value as any)}>
           <MenuItem value='All'>All statuses</MenuItem>
           {statuses.map(item => (
             <MenuItem key={item} value={item}>

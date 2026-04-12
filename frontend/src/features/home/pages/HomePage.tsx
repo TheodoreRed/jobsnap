@@ -1,5 +1,7 @@
+import JobsListPage from '@/features/jobs/pages/JobsListPage'
+
 const HomePage = () => {
-  return <div>HomePage</div>
+  return <JobsListPage />
 }
 
 export default HomePage
