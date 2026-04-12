@@ -104,53 +104,143 @@ export default function JobDetailPage() {
   const generatePdf = async () => {
     if (!detail) return
 
-    const lines = [
-      'Field Service Photo Report',
-      '',
-      `Job Title: ${detail.job.title}`,
-      `Customer: ${detail.job.customerName}`,
-      `Address: ${detail.job.address}`,
-      `Work Order: ${detail.job.workOrderReference ?? '-'}`,
-      `Status: ${detail.job.status}`,
-      `Created: ${new Date(detail.job.createdAt).toLocaleString()}`,
-      `Generated: ${new Date().toLocaleString()}`,
-      `Notes: ${detail.job.notes ?? '-'}`,
-      '',
-      'Photos',
-      ...sortedPhotos.flatMap((photo, index) => [
-        '',
-        `#${index + 1} ${photo.tag ?? 'Other'}`,
-        `Uploaded: ${new Date(photo.uploadedAt).toLocaleString()}`,
-        `Caption: ${photo.caption ?? '-'}`,
-      ]),
+    const escapePdfText = (value: string) => value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+    const wrapByChars = (value: string, maxChars = 92) => {
+      const words = value.split(/\s+/).filter(Boolean)
+      if (words.length === 0) return ['-']
+      const result: string[] = []
+      let current = words[0] ?? ''
+
+      for (const word of words.slice(1)) {
+        const candidate = `${current} ${word}`
+        if (candidate.length <= maxChars) current = candidate
+        else {
+          result.push(current)
+          current = word
+        }
+      }
+
+      result.push(current)
+      return result
+    }
+
+    const pageWidth = 595
+    const pageHeight = 842
+    const margin = 40
+    const top = 760
+    const bottom = 56
+    const lineHeight = 15
+    const linesPerPage = Math.floor((top - bottom - 70) / lineHeight)
+
+    const reportLines: Array<{ text: string; size: 10 | 11 | 12; bold?: boolean; muted?: boolean; spacer?: boolean }> = [
+      { text: `Generated ${new Date().toLocaleString()}`, size: 10, muted: true },
+      { text: '', size: 10, spacer: true },
+      { text: 'JOB DETAILS', size: 12, bold: true },
+      { text: `Job Title: ${detail.job.title}`, size: 11 },
+      { text: `Customer: ${detail.job.customerName}`, size: 11 },
+      { text: `Address: ${detail.job.address}`, size: 11 },
+      { text: `Work Order: ${detail.job.workOrderReference ?? '-'}`, size: 11 },
+      { text: `Status: ${detail.job.status}`, size: 11 },
+      { text: `Created: ${new Date(detail.job.createdAt).toLocaleString()}`, size: 11 },
+      { text: `Notes: ${detail.job.notes ?? '-'}`, size: 11 },
+      { text: '', size: 10, spacer: true },
+      { text: `PHOTOS (${sortedPhotos.length})`, size: 12, bold: true },
     ]
 
-    const escaped = lines
-      .map(line => line.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)'))
-      .join('\n')
+    for (const [index, photo] of sortedPhotos.entries()) {
+      reportLines.push({ text: '', size: 10, spacer: true })
+      reportLines.push({ text: `#${index + 1} • ${photo.tag ?? 'Other'}`, size: 11, bold: true })
+      reportLines.push({ text: `Uploaded: ${new Date(photo.uploadedAt).toLocaleString()}`, size: 10, muted: true })
+      reportLines.push({ text: `Caption: ${photo.caption?.trim() ? photo.caption : '-'}`, size: 11 })
+    }
 
-    const stream = `BT /F1 11 Tf 40 800 Td (${escaped}) Tj ET`
-    const pdf = `%PDF-1.4
-1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
-2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj
-3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj
-4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj
-5 0 obj<</Length ${stream.length}>>stream
-${stream}
-endstream
-endobj
-xref
-0 6
-0000000000 65535 f 
-0000000010 00000 n 
-0000000062 00000 n 
-0000000118 00000 n 
-0000000244 00000 n 
-0000000314 00000 n 
-trailer<</Size 6/Root 1 0 R>>
-startxref
-${380 + stream.length}
-%%EOF`
+    const expandedLines: typeof reportLines = []
+    for (const line of reportLines) {
+      if (line.spacer || line.text.length <= 92) {
+        expandedLines.push(line)
+      } else {
+        for (const chunk of wrapByChars(line.text)) {
+          expandedLines.push({ ...line, text: chunk })
+        }
+      }
+    }
+
+    const pages: typeof expandedLines[] = []
+    for (let i = 0; i < expandedLines.length; i += linesPerPage) {
+      pages.push(expandedLines.slice(i, i + linesPerPage))
+    }
+
+    const fontRegularObjectId = 3 + pages.length * 2
+    const fontBoldObjectId = fontRegularObjectId + 1
+
+    const objects: string[] = []
+    objects.push('1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj')
+
+    const kids = pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')
+    objects.push(`2 0 obj<</Type/Pages/Count ${pages.length}/Kids[${kids}]>>endobj`)
+
+    for (const [pageIndex, pageLines] of pages.entries()) {
+      const pageObjectId = 3 + pageIndex * 2
+      const contentObjectId = pageObjectId + 1
+
+      const commands: string[] = []
+      commands.push('q')
+      commands.push('0.06 0.21 0.42 rg')
+      commands.push(`${margin} ${top + 12} ${pageWidth - margin * 2} 50 re f`)
+      commands.push('Q')
+
+      commands.push('BT')
+      commands.push(`/F2 20 Tf`)
+      commands.push('1 1 1 rg')
+      commands.push(`${margin + 16} ${top + 30} Td`)
+      commands.push(`(${escapePdfText('Field Service Photo Report')}) Tj`)
+      commands.push('ET')
+
+      let y = top - 8
+      for (const line of pageLines) {
+        if (line.spacer) {
+          y -= lineHeight * 0.7
+          continue
+        }
+
+        commands.push('BT')
+        commands.push(`${line.bold ? '/F2' : '/F1'} ${line.size} Tf`)
+        commands.push(line.muted ? '0.38 0.40 0.43 rg' : '0.14 0.16 0.20 rg')
+        commands.push(`${margin} ${y} Td`)
+        commands.push(`(${escapePdfText(line.text)}) Tj`)
+        commands.push('ET')
+        y -= lineHeight
+      }
+
+      const stream = commands.join('\n')
+
+      objects.push(
+        `${pageObjectId} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>>>/Contents ${contentObjectId} 0 R>>endobj`
+      )
+      objects.push(`${contentObjectId} 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream\nendobj`)
+    }
+
+    objects.push(`${fontRegularObjectId} 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj`)
+    objects.push(`${fontBoldObjectId} 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold>>endobj`)
+
+    let pdf = '%PDF-1.4\n'
+    const offsets = [0]
+
+    for (const object of objects) {
+      offsets.push(pdf.length)
+      pdf += `${object}\n`
+    }
+
+    const xrefStart = pdf.length
+    pdf += `xref\n0 ${objects.length + 1}\n`
+    pdf += '0000000000 65535 f \n'
+
+    for (const offset of offsets.slice(1)) {
+      pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+    }
+
+    pdf += `trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xrefStart}\n%%EOF`
+
     const blob = new Blob([pdf], { type: 'application/pdf' })
     const objectUrl = URL.createObjectURL(blob)
 
