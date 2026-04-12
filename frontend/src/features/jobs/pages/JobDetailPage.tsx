@@ -200,7 +200,12 @@ export default function JobDetailPage() {
       }
     }
 
-    const preparedPhotos = await Promise.all(sortedPhotos.map(photo => preparePhoto(photo)))
+    const preparedPhotos = await Promise.all(sortedPhotos.map(async (photo, index) => ({ ...(await preparePhoto(photo)), order: index + 1 })))
+
+    const photoGroups: typeof preparedPhotos[] = []
+    for (let i = 0; i < preparedPhotos.length; i += 2) {
+      photoGroups.push(preparedPhotos.slice(i, i + 2))
+    }
 
     const pageWidth = 595
     const pageHeight = 842
@@ -216,14 +221,20 @@ export default function JobDetailPage() {
 
     pageObjectIds.push(nextObjectId)
     contentObjectIds.push(nextObjectId + 1)
-    imageObjectIds.push(null)
     nextObjectId += 2
 
-    for (const photo of preparedPhotos) {
+    for (const group of photoGroups) {
       pageObjectIds.push(nextObjectId)
       contentObjectIds.push(nextObjectId + 1)
-      imageObjectIds.push(photo.failed ? null : nextObjectId + 2)
-      nextObjectId += photo.failed ? 2 : 3
+      nextObjectId += 2
+      for (const photo of group) {
+        if (photo.failed) {
+          imageObjectIds.push(null)
+        } else {
+          imageObjectIds.push(nextObjectId)
+          nextObjectId += 1
+        }
+      }
     }
 
     const fontRegularObjectId = nextObjectId
@@ -287,56 +298,76 @@ export default function JobDetailPage() {
     const summaryStream = summaryCommands.join('\n')
     objects.push(`${contentObjectIds[0]} 0 obj<</Length ${summaryStream.length}>>stream\n${summaryStream}\nendstream\nendobj`)
 
-    preparedPhotos.forEach((photo, index) => {
-      const pageObjId = pageObjectIds[index + 1]
-      const contentObjId = contentObjectIds[index + 1]
-      const imageObjId = imageObjectIds[index + 1]
+    let imageObjectCursor = 0
+    photoGroups.forEach((group, pageIndex) => {
+      const pageObjId = pageObjectIds[pageIndex + 1]
+      const contentObjId = contentObjectIds[pageIndex + 1]
       const commands: string[] = []
+      const first = group[0]?.order ?? 1
+      const last = group[group.length - 1]?.order ?? first
 
-      commands.push(...buildHeaderCommands(`Photo ${index + 1} of ${preparedPhotos.length}`, `${photo.tag} • Uploaded ${new Date(photo.uploadedAt).toLocaleString()}`))
+      commands.push(...buildHeaderCommands(`Photo Evidence ${first}-${last} of ${preparedPhotos.length}`))
 
-      if (!photo.failed && imageObjId) {
-        const maxImageWidth = pageWidth - margin * 2
-        const maxImageHeight = pageHeight - 250
-        const imageScale = Math.min(maxImageWidth / photo.width, maxImageHeight / photo.height)
-        const drawWidth = photo.width * imageScale
-        const drawHeight = photo.height * imageScale
-        const drawX = (pageWidth - drawWidth) / 2
-        const drawY = 180
+      const cardGap = 18
+      const availableHeight = pageHeight - 140
+      const cardHeight = (availableHeight - cardGap * (group.length - 1)) / Math.max(group.length, 1)
+      let currentTopY = pageHeight - 84
+      const pageImageRefs: Array<{ objId: number; photo: (typeof preparedPhotos)[number] }> = []
 
-        commands.push('q', '0.94 0.95 0.97 rg', `${drawX - 8} ${drawY - 8} ${drawWidth + 16} ${drawHeight + 16} re f`, 'Q')
-        commands.push('q', `${drawWidth} 0 0 ${drawHeight} ${drawX} ${drawY} cm`, '/Im1 Do', 'Q')
-      } else {
-        commands.push(
-          'BT',
-          '/F1 11 Tf',
-          '0.62 0.19 0.14 rg',
-          `${margin} ${pageHeight / 2} Td`,
-          `(${escapePdfText('Unable to render this image in the PDF output.')}) Tj`,
-          'ET'
-        )
+      for (const photo of group) {
+        const cardBottom = currentTopY - cardHeight
+        const cardInnerX = margin + 10
+        const cardInnerWidth = pageWidth - margin * 2 - 20
+        const mediaTop = currentTopY - 44
+        const mediaBottom = cardBottom + 54
+        const mediaHeight = Math.max(60, mediaTop - mediaBottom)
+
+        commands.push('q', '0.94 0.95 0.97 rg', `${margin} ${cardBottom} ${pageWidth - margin * 2} ${cardHeight} re f`, 'Q')
+
+        commands.push('BT', '/F2 11 Tf', '0.12 0.14 0.18 rg', `${cardInnerX} ${currentTopY - 24} Td`, `(${escapePdfText(`Photo ${photo.order} • ${photo.tag}`)}) Tj`, 'ET')
+        commands.push('BT', '/F1 9 Tf', '0.38 0.40 0.43 rg', `${cardInnerX} ${currentTopY - 36} Td`, `(${escapePdfText(`Uploaded ${new Date(photo.uploadedAt).toLocaleString()}`)}) Tj`, 'ET')
+
+        if (!photo.failed) {
+          const scale = Math.min(cardInnerWidth / photo.width, mediaHeight / photo.height)
+          const drawWidth = photo.width * scale
+          const drawHeight = photo.height * scale
+          const drawX = cardInnerX + (cardInnerWidth - drawWidth) / 2
+          const drawY = mediaBottom + (mediaHeight - drawHeight) / 2
+          const imageObjId = imageObjectIds[imageObjectCursor]
+          if (imageObjId) {
+            pageImageRefs.push({ objId: imageObjId, photo })
+            const imName = `/Im${pageImageRefs.length}`
+            commands.push('q', `${drawWidth} 0 0 ${drawHeight} ${drawX} ${drawY} cm`, `${imName} Do`, 'Q')
+          }
+        } else {
+          commands.push('BT', '/F1 10 Tf', '0.62 0.19 0.14 rg', `${cardInnerX} ${cardBottom + cardHeight / 2} Td`, `(${escapePdfText('Unable to render this image in PDF.')}) Tj`, 'ET')
+        }
+
+        let noteY = cardBottom + 28
+        for (const chunk of wrapByChars(`Notes: ${photo.caption || 'No caption provided.'}`, 88).slice(0, 2)) {
+          commands.push('BT', '/F1 9 Tf', '0.14 0.16 0.20 rg', `${cardInnerX} ${noteY} Td`, `(${escapePdfText(chunk)}) Tj`, 'ET')
+          noteY -= 12
+        }
+
+        currentTopY = cardBottom - cardGap
+        imageObjectCursor += 1
       }
 
-      let captionY = 138
-      for (const chunk of wrapByChars(`Notes: ${photo.caption || 'No caption provided.'}`, 90)) {
-        commands.push('BT', '/F1 10 Tf', '0.13 0.14 0.16 rg', `${margin} ${captionY} Td`, `(${escapePdfText(chunk)}) Tj`, 'ET')
-        captionY -= 14
-      }
+      commands.push('BT', '/F1 9 Tf', '0.45 0.48 0.52 rg', `${margin} 24 Td`, `(${escapePdfText(`Page ${pageIndex + 2}`)}) Tj`, 'ET')
 
-      commands.push('BT', '/F1 9 Tf', '0.45 0.48 0.52 rg', `${margin} 24 Td`, `(${escapePdfText(`Page ${index + 2}`)}) Tj`, 'ET')
+      const xObjects =
+        pageImageRefs.length > 0 ? `/XObject<</${pageImageRefs.map((ref, idx) => `Im${idx + 1} ${ref.objId} 0 R`).join('/') }>>` : ''
 
       objects.push(
-        imageObjId && !photo.failed
-          ? `${pageObjId} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>/XObject<</Im1 ${imageObjId} 0 R>>>>/Contents ${contentObjId} 0 R>>endobj`
-          : `${pageObjId} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>>>/Contents ${contentObjId} 0 R>>endobj`
+        `${pageObjId} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>${xObjects}>>/Contents ${contentObjId} 0 R>>endobj`
       )
 
       const stream = commands.join('\n')
       objects.push(`${contentObjId} 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream\nendobj`)
 
-      if (imageObjId && !photo.failed) {
+      for (const ref of pageImageRefs) {
         objects.push(
-          `${imageObjId} 0 obj<</Type/XObject/Subtype/Image/Width ${photo.width}/Height ${photo.height}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter[/ASCIIHexDecode/DCTDecode]/Length ${photo.hexData.length}>>stream\n${photo.hexData}\nendstream\nendobj`
+          `${ref.objId} 0 obj<</Type/XObject/Subtype/Image/Width ${ref.photo.width}/Height ${ref.photo.height}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter[/ASCIIHexDecode/DCTDecode]/Length ${ref.photo.hexData.length}>>stream\n${ref.photo.hexData}\nendstream\nendobj`
         )
       }
     })
@@ -362,6 +393,17 @@ export default function JobDetailPage() {
 
     pdf += `trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xrefStart}\n%%EOF`
 
+    const toSlug = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+
+    const generatedAt = new Date()
+    const dateLabel = generatedAt.toISOString().slice(0, 10)
+    const customerSlug = toSlug(detail.job.customerName || 'customer')
+    const fileName = `jobsnap-report-${customerSlug || 'customer'}-${dateLabel}.pdf`
+
     const blob = new Blob([pdf], { type: 'application/pdf' })
     const objectUrl = URL.createObjectURL(blob)
 
@@ -373,7 +415,8 @@ export default function JobDetailPage() {
     navigate(`/jobs/${jobId}/report`, {
       state: {
         objectUrl,
-        generatedAt: new Date().toISOString(),
+        generatedAt: generatedAt.toISOString(),
+        fileName,
       },
     })
   }
