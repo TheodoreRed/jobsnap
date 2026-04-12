@@ -1,0 +1,14 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/static/*", "/assets/*", "/*.png", "/*.jpg", "/*.jpeg", "/*.gif", "/*.css", "/*.js"]
+  },
+  "responseOverrides": {
+    "404": {
+      "rewrite": "/index.html"
+    }
+  },
+  "globalHeaders": {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.ciamlogin.com https://login.microsoftonline.com https://graph.microsoft.com; frame-src 'self' https://*.ciamlogin.com https://login.microsoftonline.com; frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
+  }
+}

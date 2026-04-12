@@ -1,0 +1,50 @@
+name: Deploy Backend
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [closed]
+    branches:
+      - staging
+      - main
+    paths:
+      - "backend/**"
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22.x"
+
+jobs:
+  build-and-deploy:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    runs-on: windows-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.base_ref }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install / Build
+        shell: pwsh
+        working-directory: backend
+        run: |
+          npm install
+          npm run build
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
+          package: backend
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+          sku: flexconsumption
+          remote-build: false
