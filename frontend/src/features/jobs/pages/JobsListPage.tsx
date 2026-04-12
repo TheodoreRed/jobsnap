@@ -35,7 +35,7 @@ export default function JobsListPage() {
   const jobs = useMemo(() => query.data?.items ?? [], [query.data])
 
   return (
-    <Stack spacing={2} sx={{ width: '100%', maxWidth: 980 }}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 980, mx: 'auto' }}>
       <Stack direction='row' alignItems='center' justifyContent='space-between' flexWrap='wrap' gap={1}>
         <Typography variant='h5' fontWeight={700}>
           Field Service Photo Logger

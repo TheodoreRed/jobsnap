@@ -34,7 +34,7 @@ export default function ReportPage() {
   if (!report) return <Typography>No report available yet.</Typography>
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
       <Typography variant='h5' fontWeight={700}>
         Generated Report
       </Typography>

@@ -35,7 +35,7 @@ export default function CreateJobPage() {
   }
 
   return (
-    <Stack spacing={2} sx={{ width: '100%', maxWidth: 760 }}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
       <Typography variant='h5' fontWeight={700}>
         Create Job
       </Typography>

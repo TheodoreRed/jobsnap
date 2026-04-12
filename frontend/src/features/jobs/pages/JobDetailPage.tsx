@@ -170,7 +170,7 @@ ${380 + stream.length}
   if (!detail) return <Typography>{jobQuery.isLoading ? 'Loading...' : 'Job not found.'}</Typography>
 
   return (
-    <Stack spacing={2} sx={{ width: '100%', maxWidth: 980 }}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 980, mx: 'auto' }}>
       {error && <Alert severity='error'>{error}</Alert>}
 
       <Typography variant='h5' fontWeight={700}>

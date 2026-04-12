@@ -9,6 +9,7 @@ import { LoadingScreen } from '@/components/LoadingScreen'
 const HomePage = lazy(() => import('@/features/home/pages/HomePage'))
 const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'))
 const CreateJobPage = lazy(() => import('@/features/jobs/pages/CreateJobPage'))
+const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage'))
 const JobDetailPage = lazy(() => import('@/features/jobs/pages/JobDetailPage'))
 const ReportPage = lazy(() => import('@/features/reports/pages/ReportPage'))
 
@@ -31,7 +32,7 @@ export function AppRouter() {
             }
           >
             <Route path='/' element={<HomePage />} />
-            <Route path='/dashboard' element={<HomePage />} />
+            <Route path='/dashboard' element={<DashboardPage />} />
             <Route path='/jobs/new' element={<CreateJobPage />} />
             <Route path='/jobs/:jobId' element={<JobDetailPage />} />
             <Route path='/jobs/:jobId/report' element={<ReportPage />} />
