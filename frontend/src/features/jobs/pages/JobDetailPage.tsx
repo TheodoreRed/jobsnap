@@ -104,7 +104,13 @@ export default function JobDetailPage() {
   const generatePdf = async () => {
     if (!detail) return
 
-    const escapePdfText = (value: string) => value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+    const sanitizePdfText = (value: string) =>
+      value
+        .normalize('NFKD')
+        .replace(/[^\x20-\x7E]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    const escapePdfText = (value: string) => sanitizePdfText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
     const wrapByChars = (value: string, maxChars = 92) => {
       const words = value.split(/\s+/).filter(Boolean)
       if (words.length === 0) return ['-']
@@ -131,9 +137,38 @@ export default function JobDetailPage() {
     const bottom = 56
     const lineHeight = 15
     const linesPerPage = Math.floor((top - bottom - 70) / lineHeight)
+    const photoTagCounts = sortedPhotos.reduce<Record<PhotoTag, number>>(
+      (acc, photo) => {
+        const tag = photo.tag ?? 'Other'
+        acc[tag] += 1
+        return acc
+      },
+      { Before: 0, During: 0, After: 0, Other: 0 }
+    )
+    const hasCoverageByTag = (tag: PhotoTag) => photoTagCounts[tag] > 0
+    const beforeAfterComplete = hasCoverageByTag('Before') && hasCoverageByTag('After')
+    const timelineStart = sortedPhotos[0]?.uploadedAt
+    const timelineEnd = sortedPhotos[sortedPhotos.length - 1]?.uploadedAt
+    const timelineSummary =
+      timelineStart && timelineEnd
+        ? `${new Date(timelineStart).toLocaleString()} to ${new Date(timelineEnd).toLocaleString()}`
+        : 'No photos uploaded'
+    const statusSummary =
+      detail.job.status === 'Complete' && !beforeAfterComplete
+        ? 'Review recommended: job is marked complete but key evidence is missing.'
+        : beforeAfterComplete
+          ? 'Evidence set is sufficient for before/after verification.'
+          : 'Capture both before and after photos before final handoff.'
 
     const reportLines: Array<{ text: string; size: 10 | 11 | 12; bold?: boolean; muted?: boolean; spacer?: boolean }> = [
       { text: `Generated ${new Date().toLocaleString()}`, size: 10, muted: true },
+      { text: '', size: 10, spacer: true },
+      { text: 'OPERATIONS SUMMARY', size: 12, bold: true },
+      { text: `Job Status: ${detail.job.status}`, size: 11 },
+      { text: `Photo Evidence: ${sortedPhotos.length} total`, size: 11 },
+      { text: `Coverage Check - Before: ${hasCoverageByTag('Before') ? 'OK' : 'MISSING'} | During: ${hasCoverageByTag('During') ? 'OK' : 'MISSING'} | After: ${hasCoverageByTag('After') ? 'OK' : 'MISSING'}`, size: 11 },
+      { text: `Photo Timeline: ${timelineSummary}`, size: 11 },
+      { text: `Recommendation: ${statusSummary}`, size: 11 },
       { text: '', size: 10, spacer: true },
       { text: 'JOB DETAILS', size: 12, bold: true },
       { text: `Job Title: ${detail.job.title}`, size: 11 },
@@ -142,16 +177,19 @@ export default function JobDetailPage() {
       { text: `Work Order: ${detail.job.workOrderReference ?? '-'}`, size: 11 },
       { text: `Status: ${detail.job.status}`, size: 11 },
       { text: `Created: ${new Date(detail.job.createdAt).toLocaleString()}`, size: 11 },
+      { text: `Description: ${detail.job.description ?? '-'}`, size: 11 },
       { text: `Notes: ${detail.job.notes ?? '-'}`, size: 11 },
       { text: '', size: 10, spacer: true },
-      { text: `PHOTOS (${sortedPhotos.length})`, size: 12, bold: true },
+      { text: `PHOTO LOG (${sortedPhotos.length})`, size: 12, bold: true },
     ]
 
     for (const [index, photo] of sortedPhotos.entries()) {
       reportLines.push({ text: '', size: 10, spacer: true })
-      reportLines.push({ text: `#${index + 1} • ${photo.tag ?? 'Other'}`, size: 11, bold: true })
+      reportLines.push({ text: `#${index + 1} - ${photo.tag ?? 'Other'} evidence`, size: 11, bold: true })
       reportLines.push({ text: `Uploaded: ${new Date(photo.uploadedAt).toLocaleString()}`, size: 10, muted: true })
-      reportLines.push({ text: `Caption: ${photo.caption?.trim() ? photo.caption : '-'}`, size: 11 })
+      if (photo.caption?.trim()) {
+        reportLines.push({ text: `Technician Note: ${photo.caption.trim()}`, size: 11 })
+      }
     }
 
     const expandedLines: typeof reportLines = []
@@ -185,6 +223,16 @@ export default function JobDetailPage() {
 
       const commands: string[] = []
       commands.push('q')
+      commands.push('0.96 0.97 0.98 rg')
+      commands.push(`0 0 ${pageWidth} ${pageHeight} re f`)
+      commands.push('Q')
+
+      commands.push('q')
+      commands.push('1 1 1 rg')
+      commands.push(`${margin - 14} ${bottom - 12} ${pageWidth - (margin - 14) * 2} ${top - bottom + 78} re f`)
+      commands.push('Q')
+
+      commands.push('q')
       commands.push('0.06 0.21 0.42 rg')
       commands.push(`${margin} ${top + 12} ${pageWidth - margin * 2} 50 re f`)
       commands.push('Q')
@@ -211,6 +259,18 @@ export default function JobDetailPage() {
         commands.push('ET')
         y -= lineHeight
       }
+
+      commands.push('q')
+      commands.push('0.82 0.84 0.88 RG')
+      commands.push(`${margin} ${bottom + 8} ${pageWidth - margin * 2} 0 m S`)
+      commands.push('Q')
+
+      commands.push('BT')
+      commands.push('/F1 9 Tf')
+      commands.push('0.45 0.48 0.52 rg')
+      commands.push(`${margin} ${bottom - 6} Td`)
+      commands.push(`(${escapePdfText(`Page ${pageIndex + 1} of ${pages.length}`)}) Tj`)
+      commands.push('ET')
 
       const stream = commands.join('\n')
 
