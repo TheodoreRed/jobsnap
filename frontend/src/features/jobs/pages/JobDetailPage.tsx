@@ -170,14 +170,14 @@ ${380 + stream.length}
   if (!detail) return <Typography>{jobQuery.isLoading ? 'Loading...' : 'Job not found.'}</Typography>
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 980 }}>
       {error && <Alert severity='error'>{error}</Alert>}
 
       <Typography variant='h5' fontWeight={700}>
         {detail.job.title}
       </Typography>
 
-      <Card>
+      <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
         <CardContent>
           <Stack spacing={1.5}>
             <TextField
@@ -216,7 +216,7 @@ ${380 + stream.length}
         </CardContent>
       </Card>
 
-      <Stack direction='row' justifyContent='space-between' alignItems='center'>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent='space-between' alignItems={{ xs: 'flex-start', sm: 'center' }} gap={1}>
         <Typography variant='h6'>Photos ({sortedPhotos.length})</Typography>
         <Button variant='outlined' component='label'>
           Upload Photos
@@ -226,7 +226,7 @@ ${380 + stream.length}
 
       <Stack spacing={1.5}>
         {sortedPhotos.map(photo => (
-          <Card key={photo.id}>
+          <Card key={photo.id} sx={{ border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
               <Stack spacing={1}>
                 <Box component='img' src={photo.fileReference} alt='job' sx={{ width: '100%', maxHeight: 260, objectFit: 'cover' }} />

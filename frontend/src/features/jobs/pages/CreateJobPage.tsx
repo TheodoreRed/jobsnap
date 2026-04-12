@@ -35,7 +35,7 @@ export default function CreateJobPage() {
   }
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 760 }}>
       <Typography variant='h5' fontWeight={700}>
         Create Job
       </Typography>
@@ -68,7 +68,7 @@ export default function CreateJobPage() {
         <MenuItem value='In Progress'>In Progress</MenuItem>
         <MenuItem value='Complete'>Complete</MenuItem>
       </TextField>
-      <Stack direction={{ xs: 'column', sm: 'row' }} gap={1}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} sx={{ pt: 0.5, alignItems: { sm: 'center' } }}>
         <Button variant='contained' onClick={onSave} disabled={saving}>
           Save
         </Button>

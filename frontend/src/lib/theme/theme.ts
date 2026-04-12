@@ -104,13 +104,32 @@ export const createAppTheme = (mode: 'light' | 'dark') =>
           }
         }
       },
+      MuiTextField: {
+        defaultProps: {
+          variant: 'outlined',
+          size: 'small'
+        }
+      },
       MuiOutlinedInput: {
         styleOverrides: {
           root: {
-            borderRadius: '14px',
-            '& fieldset': { border: 'none' },
-            '&:hover fieldset': { border: 'none' },
-            '&.Mui-focused fieldset': { border: '1.5px solid #3b6bf5' }
+            borderRadius: '12px',
+            backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff',
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: mode === 'dark' ? 'rgba(232,234,240,0.28)' : 'rgba(17,24,39,0.24)',
+              borderWidth: '1px'
+            },
+            '&:hover .MuiOutlinedInput-notchedOutline': {
+              borderColor: mode === 'dark' ? 'rgba(232,234,240,0.55)' : 'rgba(17,24,39,0.42)'
+            },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: '#3b6bf5',
+              borderWidth: '1.5px'
+            }
+          },
+          input: {
+            paddingTop: '12px',
+            paddingBottom: '12px'
           }
         }
       },

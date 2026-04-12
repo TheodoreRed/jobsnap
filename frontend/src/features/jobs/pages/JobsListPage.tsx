@@ -35,7 +35,7 @@ export default function JobsListPage() {
   const jobs = useMemo(() => query.data?.items ?? [], [query.data])
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 980 }}>
       <Stack direction='row' alignItems='center' justifyContent='space-between' flexWrap='wrap' gap={1}>
         <Typography variant='h5' fontWeight={700}>
           Field Service Photo Logger
@@ -64,9 +64,9 @@ export default function JobsListPage() {
       </Stack>
 
       {jobs.map(job => (
-        <Card key={job.id} component={RouterLink} to={`/jobs/${job.id}`} sx={{ textDecoration: 'none' }}>
+        <Card key={job.id} component={RouterLink} to={`/jobs/${job.id}`} sx={{ textDecoration: 'none', border: '1px solid', borderColor: 'divider' }}>
           <CardContent>
-            <Stack direction='row' justifyContent='space-between' alignItems='center'>
+            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent='space-between' alignItems={{ xs: 'flex-start', sm: 'center' }} gap={1}>
               <Box>
                 <Typography variant='h6'>{job.title}</Typography>
                 <Typography color='text.secondary'>{job.customerName}</Typography>
