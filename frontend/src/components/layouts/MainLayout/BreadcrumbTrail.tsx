@@ -45,6 +45,10 @@ export function BreadcrumbTrail() {
         getLabel: () => t('settings')
       },
       {
+        pattern: '/analytics',
+        getLabel: () => t('analytics')
+      },
+      {
         pattern: '/jobs/new',
         getLabel: () => t('newJob')
       },
