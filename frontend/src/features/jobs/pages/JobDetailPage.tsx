@@ -112,175 +112,234 @@ export default function JobDetailPage() {
         .replace(/[^\x20-\x7E]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
+
     const escapePdfText = (value: string) => sanitizePdfText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+
     const wrapByChars = (value: string, maxChars = 92) => {
       const words = value.split(/\s+/).filter(Boolean)
       if (words.length === 0) return ['-']
-      const result: string[] = []
+      const lines: string[] = []
       let current = words[0] ?? ''
 
       for (const word of words.slice(1)) {
         const candidate = `${current} ${word}`
         if (candidate.length <= maxChars) current = candidate
         else {
-          result.push(current)
+          lines.push(current)
           current = word
         }
       }
 
-      result.push(current)
-      return result
+      lines.push(current)
+      return lines
     }
+
+    const loadImage = async (src: string): Promise<HTMLImageElement> =>
+      await new Promise((resolve, reject) => {
+        const image = new Image()
+        image.crossOrigin = 'anonymous'
+        image.onload = () => resolve(image)
+        image.onerror = () => reject(new Error('Failed to load photo for PDF rendering.'))
+        image.src = src
+      })
+
+    const bytesToHex = (bytes: Uint8Array) => Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0')).join('')
+
+    const dataUrlToBytes = (dataUrl: string): Uint8Array => {
+      const base64 = dataUrl.split(',')[1] ?? ''
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+
+      return bytes
+    }
+
+    const preparePhoto = async (photo: Photo) => {
+      try {
+        const image = await loadImage(photo.fileReference)
+        const maxDimension = 1500
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height))
+        const width = Math.max(1, Math.floor(image.width * scale))
+        const height = Math.max(1, Math.floor(image.height * scale))
+
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+
+        const context = canvas.getContext('2d')
+        if (!context) throw new Error('Canvas context unavailable.')
+
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, width, height)
+        context.drawImage(image, 0, 0, width, height)
+
+        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.86)
+
+        return {
+          width,
+          height,
+          hexData: `${bytesToHex(dataUrlToBytes(jpegDataUrl))}>`,
+          uploadedAt: photo.uploadedAt,
+          tag: photo.tag ?? 'Other',
+          caption: photo.caption?.trim() || '',
+          failed: false,
+        }
+      } catch {
+        return {
+          width: 0,
+          height: 0,
+          hexData: '',
+          uploadedAt: photo.uploadedAt,
+          tag: photo.tag ?? 'Other',
+          caption: photo.caption?.trim() || '',
+          failed: true,
+        }
+      }
+    }
+
+    const preparedPhotos = await Promise.all(sortedPhotos.map(photo => preparePhoto(photo)))
 
     const pageWidth = 595
     const pageHeight = 842
     const margin = 40
-    const top = 760
-    const bottom = 56
-    const lineHeight = 15
-    const linesPerPage = Math.floor((top - bottom - 70) / lineHeight)
-    const photoTagCounts = sortedPhotos.reduce<Record<PhotoTag, number>>(
-      (acc, photo) => {
-        const tag = photo.tag ?? 'Other'
-        acc[tag] += 1
-        return acc
-      },
-      { Before: 0, During: 0, After: 0, Other: 0 }
-    )
-    const hasCoverageByTag = (tag: PhotoTag) => photoTagCounts[tag] > 0
-    const beforeAfterComplete = hasCoverageByTag('Before') && hasCoverageByTag('After')
-    const timelineStart = sortedPhotos[0]?.uploadedAt
-    const timelineEnd = sortedPhotos[sortedPhotos.length - 1]?.uploadedAt
-    const timelineSummary =
-      timelineStart && timelineEnd
-        ? `${new Date(timelineStart).toLocaleString()} to ${new Date(timelineEnd).toLocaleString()}`
-        : 'No photos uploaded'
-    const statusSummary =
-      detail.job.status === 'Complete' && !beforeAfterComplete
-        ? 'Review recommended: job is marked complete but key evidence is missing.'
-        : beforeAfterComplete
-          ? 'Evidence set is sufficient for before/after verification.'
-          : 'Capture both before and after photos before final handoff.'
+    const contentTop = pageHeight - 78
 
-    const reportLines: Array<{ text: string; size: 10 | 11 | 12; bold?: boolean; muted?: boolean; spacer?: boolean }> = [
-      { text: `Generated ${new Date().toLocaleString()}`, size: 10, muted: true },
-      { text: '', size: 10, spacer: true },
-      { text: 'OPERATIONS SUMMARY', size: 12, bold: true },
-      { text: `Job Status: ${detail.job.status}`, size: 11 },
-      { text: `Photo Evidence: ${sortedPhotos.length} total`, size: 11 },
-      { text: `Coverage Check - Before: ${hasCoverageByTag('Before') ? 'OK' : 'MISSING'} | During: ${hasCoverageByTag('During') ? 'OK' : 'MISSING'} | After: ${hasCoverageByTag('After') ? 'OK' : 'MISSING'}`, size: 11 },
-      { text: `Photo Timeline: ${timelineSummary}`, size: 11 },
-      { text: `Recommendation: ${statusSummary}`, size: 11 },
-      { text: '', size: 10, spacer: true },
-      { text: 'JOB DETAILS', size: 12, bold: true },
-      { text: `Job Title: ${detail.job.title}`, size: 11 },
-      { text: `Customer: ${detail.job.customerName}`, size: 11 },
-      { text: `Address: ${detail.job.address}`, size: 11 },
-      { text: `Work Order: ${detail.job.workOrderReference ?? '-'}`, size: 11 },
-      { text: `Status: ${detail.job.status}`, size: 11 },
-      { text: `Created: ${new Date(detail.job.createdAt).toLocaleString()}`, size: 11 },
-      { text: `Description: ${detail.job.description ?? '-'}`, size: 11 },
-      { text: `Notes: ${detail.job.notes ?? '-'}`, size: 11 },
-      { text: '', size: 10, spacer: true },
-      { text: `PHOTO LOG (${sortedPhotos.length})`, size: 12, bold: true },
+    const objects: string[] = ['1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj']
+    const pageObjectIds: number[] = []
+    const contentObjectIds: number[] = []
+    const imageObjectIds: Array<number | null> = []
+
+    let nextObjectId = 3
+
+    pageObjectIds.push(nextObjectId)
+    contentObjectIds.push(nextObjectId + 1)
+    imageObjectIds.push(null)
+    nextObjectId += 2
+
+    for (const photo of preparedPhotos) {
+      pageObjectIds.push(nextObjectId)
+      contentObjectIds.push(nextObjectId + 1)
+      imageObjectIds.push(photo.failed ? null : nextObjectId + 2)
+      nextObjectId += photo.failed ? 2 : 3
+    }
+
+    const fontRegularObjectId = nextObjectId
+    const fontBoldObjectId = nextObjectId + 1
+
+    objects.push(`2 0 obj<</Type/Pages/Count ${pageObjectIds.length}/Kids[${pageObjectIds.map(id => `${id} 0 R`).join(' ')}]>>endobj`)
+
+    const buildHeaderCommands = (title: string, subtitle?: string) => {
+      const commands: string[] = [
+        'q',
+        '0.06 0.21 0.42 rg',
+        `0 ${pageHeight - 64} ${pageWidth} 64 re f`,
+        'Q',
+        'BT',
+        '/F2 17 Tf',
+        '1 1 1 rg',
+        `${margin} ${pageHeight - 40} Td`,
+        `(${escapePdfText(title)}) Tj`,
+        'ET',
+      ]
+
+      if (subtitle) {
+        commands.push('BT', '/F1 10 Tf', '0.84 0.92 1 rg', `${margin} ${pageHeight - 56} Td`, `(${escapePdfText(subtitle)}) Tj`, 'ET')
+      }
+
+      return commands
+    }
+
+    const summaryLines = [
+      `Generated ${new Date().toLocaleString()}`,
+      '',
+      `Job Title: ${detail.job.title}`,
+      `Customer: ${detail.job.customerName}`,
+      `Address: ${detail.job.address}`,
+      `Status: ${detail.job.status}`,
+      `Total Photos: ${sortedPhotos.length}`,
+      '',
+      'Photos are shown on the following pages in the same order as the job photo list.',
     ]
 
-    for (const [index, photo] of sortedPhotos.entries()) {
-      reportLines.push({ text: '', size: 10, spacer: true })
-      reportLines.push({ text: `#${index + 1} - ${photo.tag ?? 'Other'} evidence`, size: 11, bold: true })
-      reportLines.push({ text: `Uploaded: ${new Date(photo.uploadedAt).toLocaleString()}`, size: 10, muted: true })
-      if (photo.caption?.trim()) {
-        reportLines.push({ text: `Technician Note: ${photo.caption.trim()}`, size: 11 })
+    const summaryCommands = buildHeaderCommands('Field Service Photo Report', `Work Order ${detail.job.workOrderReference ?? '-'}`)
+
+    let summaryY = contentTop - 28
+    for (const line of summaryLines) {
+      if (!line) {
+        summaryY -= 10
+        continue
+      }
+
+      for (const chunk of wrapByChars(line, 96)) {
+        summaryCommands.push('BT', '/F1 12 Tf', '0.13 0.14 0.16 rg', `${margin} ${summaryY} Td`, `(${escapePdfText(chunk)}) Tj`, 'ET')
+        summaryY -= 18
       }
     }
 
-    const expandedLines: typeof reportLines = []
-    for (const line of reportLines) {
-      if (line.spacer || line.text.length <= 92) {
-        expandedLines.push(line)
-      } else {
-        for (const chunk of wrapByChars(line.text)) {
-          expandedLines.push({ ...line, text: chunk })
-        }
-      }
-    }
+    summaryCommands.push('BT', '/F1 9 Tf', '0.45 0.48 0.52 rg', `${margin} 24 Td`, `(${escapePdfText('Page 1')}) Tj`, 'ET')
 
-    const pages: typeof expandedLines[] = []
-    for (let i = 0; i < expandedLines.length; i += linesPerPage) {
-      pages.push(expandedLines.slice(i, i + linesPerPage))
-    }
+    objects.push(
+      `${pageObjectIds[0]} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>>>/Contents ${contentObjectIds[0]} 0 R>>endobj`
+    )
+    const summaryStream = summaryCommands.join('\n')
+    objects.push(`${contentObjectIds[0]} 0 obj<</Length ${summaryStream.length}>>stream\n${summaryStream}\nendstream\nendobj`)
 
-    const fontRegularObjectId = 3 + pages.length * 2
-    const fontBoldObjectId = fontRegularObjectId + 1
-
-    const objects: string[] = []
-    objects.push('1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj')
-
-    const kids = pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')
-    objects.push(`2 0 obj<</Type/Pages/Count ${pages.length}/Kids[${kids}]>>endobj`)
-
-    for (const [pageIndex, pageLines] of pages.entries()) {
-      const pageObjectId = 3 + pageIndex * 2
-      const contentObjectId = pageObjectId + 1
-
+    preparedPhotos.forEach((photo, index) => {
+      const pageObjId = pageObjectIds[index + 1]
+      const contentObjId = contentObjectIds[index + 1]
+      const imageObjId = imageObjectIds[index + 1]
       const commands: string[] = []
-      commands.push('q')
-      commands.push('0.96 0.97 0.98 rg')
-      commands.push(`0 0 ${pageWidth} ${pageHeight} re f`)
-      commands.push('Q')
 
-      commands.push('q')
-      commands.push('1 1 1 rg')
-      commands.push(`${margin - 14} ${bottom - 12} ${pageWidth - (margin - 14) * 2} ${top - bottom + 78} re f`)
-      commands.push('Q')
+      commands.push(...buildHeaderCommands(`Photo ${index + 1} of ${preparedPhotos.length}`, `${photo.tag} • Uploaded ${new Date(photo.uploadedAt).toLocaleString()}`))
 
-      commands.push('q')
-      commands.push('0.06 0.21 0.42 rg')
-      commands.push(`${margin} ${top + 12} ${pageWidth - margin * 2} 50 re f`)
-      commands.push('Q')
+      if (!photo.failed && imageObjId) {
+        const maxImageWidth = pageWidth - margin * 2
+        const maxImageHeight = pageHeight - 250
+        const imageScale = Math.min(maxImageWidth / photo.width, maxImageHeight / photo.height)
+        const drawWidth = photo.width * imageScale
+        const drawHeight = photo.height * imageScale
+        const drawX = (pageWidth - drawWidth) / 2
+        const drawY = 180
 
-      commands.push('BT')
-      commands.push(`/F2 20 Tf`)
-      commands.push('1 1 1 rg')
-      commands.push(`${margin + 16} ${top + 30} Td`)
-      commands.push(`(${escapePdfText('Field Service Photo Report')}) Tj`)
-      commands.push('ET')
-
-      let y = top - 8
-      for (const line of pageLines) {
-        if (line.spacer) {
-          y -= lineHeight * 0.7
-          continue
-        }
-
-        commands.push('BT')
-        commands.push(`${line.bold ? '/F2' : '/F1'} ${line.size} Tf`)
-        commands.push(line.muted ? '0.38 0.40 0.43 rg' : '0.14 0.16 0.20 rg')
-        commands.push(`${margin} ${y} Td`)
-        commands.push(`(${escapePdfText(line.text)}) Tj`)
-        commands.push('ET')
-        y -= lineHeight
+        commands.push('q', '0.94 0.95 0.97 rg', `${drawX - 8} ${drawY - 8} ${drawWidth + 16} ${drawHeight + 16} re f`, 'Q')
+        commands.push('q', `${drawWidth} 0 0 ${drawHeight} ${drawX} ${drawY} cm`, '/Im1 Do', 'Q')
+      } else {
+        commands.push(
+          'BT',
+          '/F1 11 Tf',
+          '0.62 0.19 0.14 rg',
+          `${margin} ${pageHeight / 2} Td`,
+          `(${escapePdfText('Unable to render this image in the PDF output.')}) Tj`,
+          'ET'
+        )
       }
 
-      commands.push('q')
-      commands.push('0.82 0.84 0.88 RG')
-      commands.push(`${margin} ${bottom + 8} ${pageWidth - margin * 2} 0 m S`)
-      commands.push('Q')
+      let captionY = 138
+      for (const chunk of wrapByChars(`Notes: ${photo.caption || 'No caption provided.'}`, 90)) {
+        commands.push('BT', '/F1 10 Tf', '0.13 0.14 0.16 rg', `${margin} ${captionY} Td`, `(${escapePdfText(chunk)}) Tj`, 'ET')
+        captionY -= 14
+      }
 
-      commands.push('BT')
-      commands.push('/F1 9 Tf')
-      commands.push('0.45 0.48 0.52 rg')
-      commands.push(`${margin} ${bottom - 6} Td`)
-      commands.push(`(${escapePdfText(`Page ${pageIndex + 1} of ${pages.length}`)}) Tj`)
-      commands.push('ET')
-
-      const stream = commands.join('\n')
+      commands.push('BT', '/F1 9 Tf', '0.45 0.48 0.52 rg', `${margin} 24 Td`, `(${escapePdfText(`Page ${index + 2}`)}) Tj`, 'ET')
 
       objects.push(
-        `${pageObjectId} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>>>/Contents ${contentObjectId} 0 R>>endobj`
+        imageObjId && !photo.failed
+          ? `${pageObjId} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>/XObject<</Im1 ${imageObjId} 0 R>>>>/Contents ${contentObjId} 0 R>>endobj`
+          : `${pageObjId} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>>>/Contents ${contentObjId} 0 R>>endobj`
       )
-      objects.push(`${contentObjectId} 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream\nendobj`)
-    }
+
+      const stream = commands.join('\n')
+      objects.push(`${contentObjId} 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream\nendobj`)
+
+      if (imageObjId && !photo.failed) {
+        objects.push(
+          `${imageObjId} 0 obj<</Type/XObject/Subtype/Image/Width ${photo.width}/Height ${photo.height}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter[/ASCIIHexDecode/DCTDecode]/Length ${photo.hexData.length}>>stream\n${photo.hexData}\nendstream\nendobj`
+        )
+      }
+    })
 
     objects.push(`${fontRegularObjectId} 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj`)
     objects.push(`${fontBoldObjectId} 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold>>endobj`)
@@ -318,6 +377,7 @@ export default function JobDetailPage() {
       },
     })
   }
+
 
   if (!detail) return <Typography>{jobQuery.isLoading ? 'Loading...' : 'Job not found.'}</Typography>
 
