@@ -5,5 +5,6 @@
   "settings": "Paramètres",
   "newJob": "Nouveau poste",
   "jobDetails": "Poste {id}",
-  "report": "Rapport"
+  "report": "Rapport",
+  "analytics": "Analytique"
 }

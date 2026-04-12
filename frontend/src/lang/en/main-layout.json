@@ -5,5 +5,6 @@
   "settings": "Settings",
   "newJob": "New Job",
   "jobDetails": "Job {id}",
-  "report": "Report"
+  "report": "Report",
+  "analytics": "Analytics"
 }
