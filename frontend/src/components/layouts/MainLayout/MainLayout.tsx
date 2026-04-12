@@ -26,6 +26,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode'
 import { useThemeStore } from '@/lib/theme/useThemeStore'
 import { useT } from '@/i18n/useT'
 import { AccountMenu } from '@/features/auth/AccountMenu'
+import { BreadcrumbTrail } from './BreadcrumbTrail'
 
 const DRAWER_WIDTH = 280
 
@@ -149,7 +150,8 @@ const MainLayout = () => {
         {drawerContent}
       </Drawer>
 
-      <Box component='main' sx={{ flex: 1, p: 3 }}>
+      <Box component='main' sx={{ flex: 1, p: { xs: 2, md: 3 } }}>
+        <BreadcrumbTrail />
         <Outlet />
       </Box>
     </Box>

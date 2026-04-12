@@ -2,5 +2,8 @@
   "menu": "Menu",
   "home": "Accueil",
   "dashboard": "Tableau de bord",
-  "settings": "Paramètres"
+  "settings": "Paramètres",
+  "newJob": "Nouveau poste",
+  "jobDetails": "Poste {id}",
+  "report": "Rapport"
 }
