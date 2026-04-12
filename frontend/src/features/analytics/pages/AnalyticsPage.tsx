@@ -197,7 +197,7 @@ export default function AnalyticsPage() {
             <Typography variant='h4' fontWeight={800}>
               Analytics
             </Typography>
-            <Typography color='text.secondary'>Deep metrics for job volume, customer activity, and communication trends.</Typography>
+            <Typography color='text.secondary'>Core operational metrics for jobs, photo evidence, reports, and customer activity.</Typography>
           </Box>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
@@ -232,10 +232,8 @@ export default function AnalyticsPage() {
             ['Photos', data?.totals.photos ?? 0],
             ['Reports', data?.totals.reports ?? 0],
             ['Customers', data?.totals.customers ?? 0],
-            ['Messages', data?.totals.messages ?? 0],
-            ['Sessions', data?.totals.sessions ?? 0],
           ].map(([label, value]) => (
-            <Grid key={label} size={{ xs: 6, md: 2 }}>
+            <Grid key={label} size={{ xs: 6, md: 3 }}>
               <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
                 <CardContent>
                   <Typography variant='caption' color='text.secondary'>
@@ -268,19 +266,14 @@ export default function AnalyticsPage() {
             </ChartShell>
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            <ChartShell title='Most Active Sessions' subtitle='Chat sessions with the highest message volume'>
-              <HorizontalBars data={data?.sessionMessageLeaders ?? []} labelKey='title' valueKey='count' barColor='#ea580c' />
+            <ChartShell title='Reports Generated Trend' subtitle='How many reports were generated over time'>
+              <TimeSeriesLine data={data?.series.reportsGenerated ?? []} color='#ea580c' />
             </ChartShell>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 8 }}>
+          <Grid size={{ xs: 12 }}>
             <ChartShell title='Photos Uploaded Trend' subtitle='Photo evidence growth across selected dates'>
               <TimeSeriesLine data={data?.series.photosUploaded ?? []} color='#16a34a' />
-            </ChartShell>
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <ChartShell title='Message Roles' subtitle='User vs AI chat contribution'>
-              <PieChart data={data?.messagesByRole ?? []} labelKey='role' valueKey='count' />
             </ChartShell>
           </Grid>
         </Grid>
