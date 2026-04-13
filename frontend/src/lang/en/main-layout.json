@@ -7,5 +7,6 @@
   "newJob": "New Job",
   "jobDetails": "Job {id}",
   "report": "Report",
-  "analytics": "Analytics"
+  "analytics": "Analytics",
+  "customers": "Customers"
 }

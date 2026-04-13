@@ -7,5 +7,6 @@
   "newJob": "Nouveau poste",
   "jobDetails": "Poste {id}",
   "report": "Rapport",
-  "analytics": "Analytique"
+  "analytics": "Analytique",
+  "customers": "Clients"
 }

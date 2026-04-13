@@ -65,7 +65,11 @@ app.http('analyticsOverview', {
         SessionModel.countDocuments({ createdAt: dateRange }),
         MessageModel.countDocuments({ timestamp: dateRange }),
         QuizModel.countDocuments({ createdAt: dateRange }),
-        JobModel.distinct('customerName', { createdAt: dateRange }),
+        JobModel.aggregate([
+          { $match: { createdAt: dateRange } },
+          { $group: { _id: { $ifNull: ['$customerId', { $toLower: '$customerName' }] } } },
+          { $count: 'count' },
+        ]),
         JobModel.aggregate([
           { $match: { createdAt: dateRange } },
           { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
@@ -127,7 +131,7 @@ app.http('analyticsOverview', {
           sessions: totalSessions,
           messages: totalMessages,
           quizzes: totalQuizzes,
-          customers: uniqueCustomers.length,
+          customers: uniqueCustomers[0]?.count ?? 0,
         },
         series: {
           jobsCreated: jobsCreated.map(entry => ({ date: entry._id, count: entry.count })),
