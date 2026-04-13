@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, CardContent, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material'
 
+import type { JobDetailResponse } from '@/features/jobs/types'
 import { apiRequest } from '@/lib/api'
 
 interface ReportItem {
@@ -16,20 +17,23 @@ const DEFAULT_REPORT_SETTINGS = {
   title: 'Field Service Photo Report',
   subtitle: 'Work completed summary',
   includeJobDetails: true,
-  includePhotoNotes: true,
+  includePhotoNotes: true
 }
 
 export default function ReportPage() {
   const { jobId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const [error, setError] = useState('')
+  const [isRendering, setIsRendering] = useState(false)
+  const [jobDetail, setJobDetail] = useState<JobDetailResponse | null>(null)
   const [report, setReport] = useState<ReportItem | null>(
     location.state?.objectUrl
       ? {
           id: 'latest',
           generatedAt: location.state.generatedAt,
           fileReference: location.state.objectUrl,
-          fileName: location.state.fileName,
+          fileName: location.state.fileName
         }
       : null
   )
@@ -37,9 +41,11 @@ export default function ReportPage() {
 
   useEffect(() => {
     if (report || !jobId) return
-    void apiRequest<{ items: ReportItem[] }>(`/jobs/${jobId}/reports`).then(response => {
-      if (response.items[0]) setReport(response.items[0])
-    })
+    void apiRequest<{ items: ReportItem[] }>(`/jobs/${jobId}/reports`)
+      .then(response => {
+        if (response.items[0]) setReport(response.items[0])
+      })
+      .catch((err: Error) => setError(err.message))
   }, [jobId, report])
 
   useEffect(() => {
@@ -58,9 +64,9 @@ export default function ReportPage() {
   const fileName = report.fileName || fallbackFileName
 
   return (
-    <Stack spacing={2} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 1440, mx: 'auto' }}>
       <Typography variant='h5' fontWeight={700}>
-        Generated Report
+        Generated Report Studio
       </Typography>
       <Card variant='outlined'>
         <CardContent>
@@ -88,7 +94,9 @@ export default function ReportPage() {
               control={
                 <Switch
                   checked={reportSettings.includeJobDetails}
-                  onChange={event => setReportSettings(settings => ({ ...settings, includeJobDetails: event.target.checked }))}
+                  onChange={event =>
+                    setReportSettings(settings => ({ ...settings, includeJobDetails: event.target.checked }))
+                  }
                 />
               }
               label='Include job details'
@@ -97,7 +105,9 @@ export default function ReportPage() {
               control={
                 <Switch
                   checked={reportSettings.includePhotoNotes}
-                  onChange={event => setReportSettings(settings => ({ ...settings, includePhotoNotes: event.target.checked }))}
+                  onChange={event =>
+                    setReportSettings(settings => ({ ...settings, includePhotoNotes: event.target.checked }))
+                  }
                 />
               }
               label='Include photo notes'
@@ -113,7 +123,11 @@ export default function ReportPage() {
           </Stack>
         </CardContent>
       </Card>
-      <iframe title='report-preview' src={report.fileReference} style={{ width: '100%', minHeight: 540, border: '1px solid #d0d7de', borderRadius: 8 }} />
+      <iframe
+        title='report-preview'
+        src={report.fileReference}
+        style={{ width: '100%', minHeight: 540, border: '1px solid #d0d7de', borderRadius: 8 }}
+      />
       <Button
         variant='contained'
         onClick={() => {

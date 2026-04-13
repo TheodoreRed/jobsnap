@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Alert,
@@ -7,17 +7,20 @@ import {
   Card,
   CardContent,
   Divider,
+  Fab,
   Grid,
   IconButton,
+  LinearProgress,
   MenuItem,
   Stack,
   TextField,
-  Typography,
+  Typography
 } from '@mui/material'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import DeleteIcon from '@mui/icons-material/Delete'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
+import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiRequest } from '@/lib/api'
@@ -29,7 +32,15 @@ const DEFAULT_REPORT_SETTINGS = {
   title: 'Field Service Photo Report',
   subtitle: 'Work completed summary',
   includeJobDetails: true,
-  includePhotoNotes: true,
+  includePhotoNotes: true
+}
+
+interface PendingUpload {
+  id: string
+  previewUrl: string
+  fileName: string
+  uploadedAt: string
+  status: 'uploading' | 'failed'
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -46,17 +57,33 @@ export default function JobDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([])
+  const [uploadProgress, setUploadProgress] = useState({ uploaded: 0, total: 0 })
+  const galleryInputRef = useRef<HTMLInputElement | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const objectUrlsRef = useRef<Set<string>>(new Set())
 
   const jobQuery = useQuery({
     queryKey: ['job', jobId],
     queryFn: () => apiRequest<JobDetailResponse>(`/jobs/${jobId}`),
-    enabled: Boolean(jobId),
+    enabled: Boolean(jobId)
   })
 
   const detail = jobQuery.data
   const sortedPhotos = useMemo(
     () => [...(detail?.photos ?? [])].sort((a, b) => a.orderIndex - b.orderIndex),
     [detail?.photos]
+  )
+  const isUploading = uploadProgress.total > 0 && uploadProgress.uploaded < uploadProgress.total
+
+  useEffect(
+    () => () => {
+      for (const objectUrl of objectUrlsRef.current) {
+        URL.revokeObjectURL(objectUrl)
+      }
+      objectUrlsRef.current.clear()
+    },
+    []
   )
 
   const refresh = async () => {
@@ -72,13 +99,41 @@ export default function JobDetailPage() {
   const uploadPhotos = async (files: FileList | null) => {
     if (!files) return
     setError('')
+    const selectedFiles = Array.from(files)
+    const startedAt = new Date().toISOString()
+    const pending = selectedFiles.map((file, index) => {
+      const previewUrl = URL.createObjectURL(file)
+      objectUrlsRef.current.add(previewUrl)
+      return {
+        id: `${Date.now()}-${index}-${file.name}`,
+        previewUrl,
+        fileName: file.name,
+        uploadedAt: startedAt,
+        status: 'uploading' as const
+      }
+    })
+    setPendingUploads(current => [...pending, ...current])
+    setUploadProgress({ uploaded: 0, total: selectedFiles.length })
+
     try {
-      for (const file of Array.from(files)) {
+      for (const [index, file] of selectedFiles.entries()) {
         const dataUrl = await fileToDataUrl(file)
         await apiRequest(`/jobs/${jobId}/photos`, {
           method: 'POST',
-          body: JSON.stringify({ dataUrl, fileName: file.name }),
+          body: JSON.stringify({ dataUrl, fileName: file.name })
         })
+        const pendingId = pending[index]?.id
+        if (pendingId) {
+          setPendingUploads(current => {
+            const uploaded = current.find(item => item.id === pendingId)
+            if (uploaded) {
+              URL.revokeObjectURL(uploaded.previewUrl)
+              objectUrlsRef.current.delete(uploaded.previewUrl)
+            }
+            return current.filter(item => item.id !== pendingId)
+          })
+        }
+        setUploadProgress(current => ({ ...current, uploaded: current.uploaded + 1 }))
       }
       await refresh()
     } catch (err: unknown) {
@@ -100,7 +155,7 @@ export default function JobDetailPage() {
 
     await apiRequest(`/jobs/${jobId}/photos/reorder`, {
       method: 'POST',
-      body: JSON.stringify({ orderedPhotoIds: current.map(item => item.id) }),
+      body: JSON.stringify({ orderedPhotoIds: current.map(item => item.id) })
     })
     await refresh()
   }
@@ -129,7 +184,8 @@ export default function JobDetailPage() {
         .replace(/\s+/g, ' ')
         .trim()
 
-    const escapePdfText = (value: string) => sanitizePdfText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+    const escapePdfText = (value: string) =>
+      sanitizePdfText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
 
     const wrapByChars = (value: string, maxChars = 92) => {
       const words = value.split(/\s+/).filter(Boolean)
@@ -159,7 +215,10 @@ export default function JobDetailPage() {
         image.src = src
       })
 
-    const bytesToHex = (bytes: Uint8Array) => Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0')).join('')
+    const bytesToHex = (bytes: Uint8Array) =>
+      Array.from(bytes)
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('')
 
     const dataUrlToBytes = (dataUrl: string): Uint8Array => {
       const base64 = dataUrl.split(',')[1] ?? ''
@@ -201,7 +260,7 @@ export default function JobDetailPage() {
           uploadedAt: photo.uploadedAt,
           tag: photo.tag ?? 'Other',
           caption: photo.caption?.trim() || '',
-          failed: false,
+          failed: false
         }
       } catch {
         return {
@@ -211,14 +270,16 @@ export default function JobDetailPage() {
           uploadedAt: photo.uploadedAt,
           tag: photo.tag ?? 'Other',
           caption: photo.caption?.trim() || '',
-          failed: true,
+          failed: true
         }
       }
     }
 
-    const preparedPhotos = await Promise.all(sortedPhotos.map(async (photo, index) => ({ ...(await preparePhoto(photo)), order: index + 1 })))
+    const preparedPhotos = await Promise.all(
+      sortedPhotos.map(async (photo, index) => ({ ...(await preparePhoto(photo)), order: index + 1 }))
+    )
 
-    const photoGroups: typeof preparedPhotos[] = []
+    const photoGroups: (typeof preparedPhotos)[] = []
     for (let i = 0; i < preparedPhotos.length; i += 2) {
       photoGroups.push(preparedPhotos.slice(i, i + 2))
     }
@@ -256,7 +317,9 @@ export default function JobDetailPage() {
     const fontRegularObjectId = nextObjectId
     const fontBoldObjectId = nextObjectId + 1
 
-    objects.push(`2 0 obj<</Type/Pages/Count ${pageObjectIds.length}/Kids[${pageObjectIds.map(id => `${id} 0 R`).join(' ')}]>>endobj`)
+    objects.push(
+      `2 0 obj<</Type/Pages/Count ${pageObjectIds.length}/Kids[${pageObjectIds.map(id => `${id} 0 R`).join(' ')}]>>endobj`
+    )
 
     const buildHeaderCommands = (title: string, subtitle?: string) => {
       const commands: string[] = [
@@ -269,11 +332,18 @@ export default function JobDetailPage() {
         '1 1 1 rg',
         `${margin} ${pageHeight - 40} Td`,
         `(${escapePdfText(title)}) Tj`,
-        'ET',
+        'ET'
       ]
 
       if (subtitle) {
-        commands.push('BT', '/F1 10 Tf', '0.84 0.92 1 rg', `${margin} ${pageHeight - 56} Td`, `(${escapePdfText(subtitle)}) Tj`, 'ET')
+        commands.push(
+          'BT',
+          '/F1 10 Tf',
+          '0.84 0.92 1 rg',
+          `${margin} ${pageHeight - 56} Td`,
+          `(${escapePdfText(subtitle)}) Tj`,
+          'ET'
+        )
       }
 
       return commands
@@ -289,7 +359,10 @@ export default function JobDetailPage() {
     }
     summaryLines.push('Photos are shown on the following pages in the same order as the job photo list.')
 
-    const summaryCommands = buildHeaderCommands(reportSettings.title, `${reportSettings.subtitle} • Work Order ${detail.job.workOrderReference ?? '-'}`)
+    const summaryCommands = buildHeaderCommands(
+      reportSettings.title,
+      `${reportSettings.subtitle} • Work Order ${detail.job.workOrderReference ?? '-'}`
+    )
 
     let summaryY = contentTop - 28
     for (const line of summaryLines) {
@@ -299,18 +372,34 @@ export default function JobDetailPage() {
       }
 
       for (const chunk of wrapByChars(line, 96)) {
-        summaryCommands.push('BT', '/F1 12 Tf', '0.13 0.14 0.16 rg', `${margin} ${summaryY} Td`, `(${escapePdfText(chunk)}) Tj`, 'ET')
+        summaryCommands.push(
+          'BT',
+          '/F1 12 Tf',
+          '0.13 0.14 0.16 rg',
+          `${margin} ${summaryY} Td`,
+          `(${escapePdfText(chunk)}) Tj`,
+          'ET'
+        )
         summaryY -= 18
       }
     }
 
-    summaryCommands.push('BT', '/F1 9 Tf', '0.45 0.48 0.52 rg', `${margin} 24 Td`, `(${escapePdfText('Page 1')}) Tj`, 'ET')
+    summaryCommands.push(
+      'BT',
+      '/F1 9 Tf',
+      '0.45 0.48 0.52 rg',
+      `${margin} 24 Td`,
+      `(${escapePdfText('Page 1')}) Tj`,
+      'ET'
+    )
 
     objects.push(
       `${pageObjectIds[0]} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>>>/Contents ${contentObjectIds[0]} 0 R>>endobj`
     )
     const summaryStream = summaryCommands.join('\n')
-    objects.push(`${contentObjectIds[0]} 0 obj<</Length ${summaryStream.length}>>stream\n${summaryStream}\nendstream\nendobj`)
+    objects.push(
+      `${contentObjectIds[0]} 0 obj<</Length ${summaryStream.length}>>stream\n${summaryStream}\nendstream\nendobj`
+    )
 
     let imageObjectCursor = 0
     photoGroups.forEach((group, pageIndex) => {
@@ -336,10 +425,29 @@ export default function JobDetailPage() {
         const mediaBottom = cardBottom + 54
         const mediaHeight = Math.max(60, mediaTop - mediaBottom)
 
-        commands.push('q', '0.94 0.95 0.97 rg', `${margin} ${cardBottom} ${pageWidth - margin * 2} ${cardHeight} re f`, 'Q')
+        commands.push(
+          'q',
+          '0.94 0.95 0.97 rg',
+          `${margin} ${cardBottom} ${pageWidth - margin * 2} ${cardHeight} re f`,
+          'Q'
+        )
 
-        commands.push('BT', '/F2 11 Tf', '0.12 0.14 0.18 rg', `${cardInnerX} ${currentTopY - 24} Td`, `(${escapePdfText(`Photo ${photo.order} • ${photo.tag}`)}) Tj`, 'ET')
-        commands.push('BT', '/F1 9 Tf', '0.38 0.40 0.43 rg', `${cardInnerX} ${currentTopY - 36} Td`, `(${escapePdfText(`Uploaded ${new Date(photo.uploadedAt).toLocaleString()}`)}) Tj`, 'ET')
+        commands.push(
+          'BT',
+          '/F2 11 Tf',
+          '0.12 0.14 0.18 rg',
+          `${cardInnerX} ${currentTopY - 24} Td`,
+          `(${escapePdfText(`Photo ${photo.order} • ${photo.tag}`)}) Tj`,
+          'ET'
+        )
+        commands.push(
+          'BT',
+          '/F1 9 Tf',
+          '0.38 0.40 0.43 rg',
+          `${cardInnerX} ${currentTopY - 36} Td`,
+          `(${escapePdfText(`Uploaded ${new Date(photo.uploadedAt).toLocaleString()}`)}) Tj`,
+          'ET'
+        )
 
         if (!photo.failed) {
           const scale = Math.min(cardInnerWidth / photo.width, mediaHeight / photo.height)
@@ -354,13 +462,27 @@ export default function JobDetailPage() {
             commands.push('q', `${drawWidth} 0 0 ${drawHeight} ${drawX} ${drawY} cm`, `${imName} Do`, 'Q')
           }
         } else {
-          commands.push('BT', '/F1 10 Tf', '0.62 0.19 0.14 rg', `${cardInnerX} ${cardBottom + cardHeight / 2} Td`, `(${escapePdfText('Unable to render this image in PDF.')}) Tj`, 'ET')
+          commands.push(
+            'BT',
+            '/F1 10 Tf',
+            '0.62 0.19 0.14 rg',
+            `${cardInnerX} ${cardBottom + cardHeight / 2} Td`,
+            `(${escapePdfText('Unable to render this image in PDF.')}) Tj`,
+            'ET'
+          )
         }
 
         if (reportSettings.includePhotoNotes) {
           let noteY = cardBottom + 28
           for (const chunk of wrapByChars(`Notes: ${photo.caption || 'No caption provided.'}`, 88).slice(0, 2)) {
-            commands.push('BT', '/F1 9 Tf', '0.14 0.16 0.20 rg', `${cardInnerX} ${noteY} Td`, `(${escapePdfText(chunk)}) Tj`, 'ET')
+            commands.push(
+              'BT',
+              '/F1 9 Tf',
+              '0.14 0.16 0.20 rg',
+              `${cardInnerX} ${noteY} Td`,
+              `(${escapePdfText(chunk)}) Tj`,
+              'ET'
+            )
             noteY -= 12
           }
         }
@@ -369,10 +491,19 @@ export default function JobDetailPage() {
         imageObjectCursor += 1
       }
 
-      commands.push('BT', '/F1 9 Tf', '0.45 0.48 0.52 rg', `${margin} 24 Td`, `(${escapePdfText(`Page ${pageIndex + 2}`)}) Tj`, 'ET')
+      commands.push(
+        'BT',
+        '/F1 9 Tf',
+        '0.45 0.48 0.52 rg',
+        `${margin} 24 Td`,
+        `(${escapePdfText(`Page ${pageIndex + 2}`)}) Tj`,
+        'ET'
+      )
 
       const xObjects =
-        pageImageRefs.length > 0 ? `/XObject<</${pageImageRefs.map((ref, idx) => `Im${idx + 1} ${ref.objId} 0 R`).join('/') }>>` : ''
+        pageImageRefs.length > 0
+          ? `/XObject<</${pageImageRefs.map((ref, idx) => `Im${idx + 1} ${ref.objId} 0 R`).join('/')}>>`
+          : ''
 
       objects.push(
         `${pageObjId} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageWidth} ${pageHeight}]/Resources<</Font<</F1 ${fontRegularObjectId} 0 R/F2 ${fontBoldObjectId} 0 R>>${xObjects}>>/Contents ${contentObjId} 0 R>>endobj`
@@ -425,18 +556,17 @@ export default function JobDetailPage() {
 
     await apiRequest(`/jobs/${jobId}/reports`, {
       method: 'POST',
-      body: JSON.stringify({ fileReference: objectUrl }),
+      body: JSON.stringify({ fileReference: generatedReport.objectUrl })
     })
 
     navigate(`/jobs/${jobId}/report`, {
       state: {
         objectUrl,
         generatedAt: generatedAt.toISOString(),
-        fileName,
-      },
+        fileName
+      }
     })
   }
-
 
   if (!detail) return <Typography>{jobQuery.isLoading ? 'Loading...' : 'Job not found.'}</Typography>
 
@@ -539,11 +669,62 @@ export default function JobDetailPage() {
               <Typography variant='h6'>Photos ({sortedPhotos.length})</Typography>
               <Button variant='outlined' component='label'>
                 Upload Photos
-                <input hidden type='file' multiple accept='image/*' onChange={e => void uploadPhotos(e.target.files)} />
+                <input
+                  ref={galleryInputRef}
+                  hidden
+                  type='file'
+                  multiple
+                  accept='image/*'
+                  onChange={e => void uploadPhotos(e.target.files)}
+                />
               </Button>
             </Stack>
 
+            {uploadProgress.total > 0 ? (
+              <Stack spacing={0.5}>
+                <Typography variant='caption' color='text.secondary'>
+                  Uploading {uploadProgress.uploaded}/{uploadProgress.total} photo
+                  {uploadProgress.total === 1 ? '' : 's'}
+                </Typography>
+                <LinearProgress variant='determinate' value={(uploadProgress.uploaded / uploadProgress.total) * 100} />
+              </Stack>
+            ) : null}
+
             <Stack spacing={1.5}>
+              {pendingUploads.map(photo => (
+                <Card key={photo.id} sx={{ border: '1px solid', borderColor: 'divider', opacity: 0.85 }}>
+                  <CardContent>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                      <Box
+                        component='img'
+                        src={photo.previewUrl}
+                        alt={photo.fileName}
+                        sx={{
+                          width: { xs: '100%', md: 220 },
+                          maxHeight: { xs: 180, md: 160 },
+                          borderRadius: 1,
+                          objectFit: 'cover',
+                          flexShrink: 0
+                        }}
+                      />
+                      <Stack spacing={1} sx={{ flex: 1 }}>
+                        <Typography variant='caption' color='text.secondary'>
+                          Captured {new Date(photo.uploadedAt).toLocaleString()}
+                        </Typography>
+                        <Typography variant='body2' color='text.primary'>
+                          {photo.fileName}
+                        </Typography>
+                        <Typography
+                          variant='caption'
+                          color={photo.status === 'failed' ? 'error.main' : 'text.secondary'}
+                        >
+                          {photo.status === 'failed' ? 'Upload failed. Try again.' : 'Uploading...'}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
               {sortedPhotos.map(photo => (
                 <Card key={photo.id} sx={{ border: '1px solid', borderColor: 'divider' }}>
                   <CardContent>
@@ -557,7 +738,7 @@ export default function JobDetailPage() {
                           maxHeight: { xs: 180, md: 160 },
                           borderRadius: 1,
                           objectFit: 'cover',
-                          flexShrink: 0,
+                          flexShrink: 0
                         }}
                       />
                       <Stack spacing={1} sx={{ flex: 1 }}>
@@ -618,6 +799,32 @@ export default function JobDetailPage() {
           </CardContent>
         </Card>
       ) : null}
+      <input
+        ref={cameraInputRef}
+        hidden
+        type='file'
+        accept='image/*'
+        capture='environment'
+        onChange={e => void uploadPhotos(e.target.files)}
+      />
+      <Fab
+        color='primary'
+        aria-label='Take photo'
+        disabled={isUploading}
+        onClick={() => cameraInputRef.current?.click()}
+        sx={{
+          position: 'fixed',
+          right: 20,
+          bottom: 20,
+          width: 68,
+          height: 68,
+          zIndex: theme => theme.zIndex.tooltip + 1,
+          display: { xs: 'inline-flex', md: 'none' },
+          boxShadow: 6
+        }}
+      >
+        <CameraAltIcon sx={{ fontSize: 34 }} />
+      </Fab>
     </Stack>
   )
 }
