@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Box, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
+import { Box, Button, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
 
 import { apiRequest } from '@/lib/api'
 import type { Job } from '@/features/jobs/types'
@@ -47,9 +47,14 @@ export default function CustomersPage() {
 
   return (
     <Box sx={{ width: '100%', maxWidth: 900, mx: 'auto' }}>
-      <Typography variant='h5' fontWeight={700} sx={{ mb: 1 }}>
-        Customers
-      </Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent='space-between' alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ mb: 1 }}>
+        <Typography variant='h5' fontWeight={700}>
+          Customers
+        </Typography>
+        <Button component={RouterLink} to='/jobs/new' variant='contained'>
+          Add Customer
+        </Button>
+      </Stack>
       <Typography color='text.secondary' sx={{ mb: 2.5 }}>
         View every customer in one place and open a detailed page for job history.
       </Typography>
