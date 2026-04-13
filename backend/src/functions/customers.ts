@@ -1,10 +1,18 @@
 import { app } from '@azure/functions'
+import { z } from 'zod'
 
 import { connectDb } from '../mongodb/client'
 import { CustomerModel } from '../models/customer.model'
 import { JobModel } from '../models/job.model'
 import { PhotoModel } from '../models/photo.model'
-import { internalServerError, notFound, okResponse } from '../utils/response'
+import { badRequest, createdResponse, internalServerError, notFound, okResponse } from '../utils/response'
+
+const customerInputSchema = z.object({
+  name: z.string().trim().min(1),
+  defaultAddress: z.string().trim().optional(),
+  phoneNumber: z.string().trim().optional(),
+  email: z.string().trim().email().optional().or(z.literal('')),
+})
 
 function normalizeName(value: string) {
   return value.trim().toLowerCase()
@@ -20,6 +28,13 @@ function normalizeCustomer(customer: any) {
     createdAt: customer.createdAt,
     updatedAt: customer.updatedAt,
   }
+}
+
+async function assertUniqueCustomerName(name: string, excludingId?: string) {
+  const existing = await CustomerModel.findOne({ normalizedName: normalizeName(name) }).lean()
+  if (!existing) return null
+  if (excludingId && String(existing._id) === excludingId) return null
+  return existing
 }
 
 app.http('customersList', {
@@ -39,6 +54,34 @@ app.http('customersList', {
 
       const customers = await CustomerModel.find(filter).sort({ name: 1 }).lean()
       return okResponse({ items: customers.map(normalizeCustomer) })
+    } catch (error) {
+      console.error(error)
+      return internalServerError()
+    }
+  },
+})
+
+app.http('customersCreate', {
+  route: 'customers',
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  handler: async req => {
+    try {
+      await connectDb()
+      const parsed = customerInputSchema.safeParse(await req.json())
+      if (!parsed.success) return badRequest(parsed.error.issues[0]?.message ?? 'Invalid customer payload')
+
+      if (await assertUniqueCustomerName(parsed.data.name)) {
+        return badRequest('A customer with this name already exists')
+      }
+
+      const customer = await CustomerModel.create({
+        ...parsed.data,
+        email: parsed.data.email || undefined,
+        normalizedName: normalizeName(parsed.data.name),
+      })
+
+      return createdResponse(normalizeCustomer(customer))
     } catch (error) {
       console.error(error)
       return internalServerError()
@@ -75,6 +118,41 @@ app.http('customersGetById', {
           photoCount: countMap.get(String(job._id)) ?? 0,
         })),
       })
+    } catch (error) {
+      console.error(error)
+      return internalServerError()
+    }
+  },
+})
+
+app.http('customersPatchById', {
+  route: 'customers/{customerId}',
+  methods: ['PATCH'],
+  authLevel: 'anonymous',
+  handler: async req => {
+    try {
+      await connectDb()
+      const parsed = customerInputSchema.safeParse(await req.json())
+      if (!parsed.success) return badRequest(parsed.error.issues[0]?.message ?? 'Invalid customer payload')
+
+      if (await assertUniqueCustomerName(parsed.data.name, req.params.customerId)) {
+        return badRequest('A customer with this name already exists')
+      }
+
+      const updated = await CustomerModel.findByIdAndUpdate(
+        req.params.customerId,
+        {
+          ...parsed.data,
+          email: parsed.data.email || undefined,
+          normalizedName: normalizeName(parsed.data.name),
+        },
+        { new: true }
+      ).lean()
+      if (!updated) return notFound('Customer not found')
+
+      await JobModel.updateMany({ customerId: updated._id }, { customerName: updated.name })
+
+      return okResponse(normalizeCustomer(updated))
     } catch (error) {
       console.error(error)
       return internalServerError()

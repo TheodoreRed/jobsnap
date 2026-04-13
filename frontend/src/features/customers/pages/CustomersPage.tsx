@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -18,9 +20,19 @@ import {
 import { apiRequest } from '@/lib/api'
 import type { Customer, CustomerDetailResponse } from '../types'
 
+const EMPTY_FORM = {
+  name: '',
+  defaultAddress: '',
+  phoneNumber: '',
+  email: '',
+}
+
 export default function CustomersPage() {
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [formError, setFormError] = useState('')
+  const [form, setForm] = useState(EMPTY_FORM)
 
   const customerQuery = useQuery({
     queryKey: ['customers', search],
@@ -34,31 +46,84 @@ export default function CustomersPage() {
     [customers, selectedCustomerId]
   )
 
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setForm(EMPTY_FORM)
+      return
+    }
+
+    setForm({
+      name: selectedCustomer.name,
+      defaultAddress: selectedCustomer.defaultAddress ?? '',
+      phoneNumber: selectedCustomer.phoneNumber ?? '',
+      email: selectedCustomer.email ?? '',
+    })
+  }, [selectedCustomer])
+
   const detailQuery = useQuery({
     queryKey: ['customer', selectedCustomer?.id],
     queryFn: () => apiRequest<CustomerDetailResponse>(`/customers/${selectedCustomer?.id}`),
     enabled: Boolean(selectedCustomer?.id),
   })
 
+  const createMutation = useMutation({
+    mutationFn: () => apiRequest<Customer>('/customers', { method: 'POST', body: JSON.stringify(form) }),
+    onSuccess: customer => {
+      setFormError('')
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
+      queryClient.invalidateQueries({ queryKey: ['customers-for-autocomplete'] })
+      setSelectedCustomerId(customer.id)
+    },
+    onError: (error: Error) => setFormError(error.message),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: () => apiRequest<Customer>(`/customers/${selectedCustomer?.id}`, { method: 'PATCH', body: JSON.stringify(form) }),
+    onSuccess: customer => {
+      setFormError('')
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
+      queryClient.invalidateQueries({ queryKey: ['customer', customer.id] })
+      queryClient.invalidateQueries({ queryKey: ['customers-for-autocomplete'] })
+    },
+    onError: (error: Error) => setFormError(error.message),
+  })
+
+  const isEditingExisting = Boolean(selectedCustomer)
+  const isSaving = createMutation.isPending || updateMutation.isPending
+
   return (
-    <Stack spacing={2} sx={{ width: '100%', maxWidth: 1100, mx: 'auto' }}>
+    <Stack spacing={2} sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
       <Typography variant='h5' fontWeight={700}>
         Customers
       </Typography>
 
-      <TextField
-        label='Search customers'
-        value={search}
-        onChange={event => {
-          setSearch(event.target.value)
-          setSelectedCustomerId(null)
-        }}
-        placeholder='Name, address, phone, or email'
-      />
-
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems='stretch'>
         <Card sx={{ flex: 1, border: '1px solid', borderColor: 'divider', minHeight: 380 }}>
           <CardContent sx={{ p: 0 }}>
+            <Box sx={{ p: 1.5, display: 'flex', gap: 1 }}>
+              <TextField
+                fullWidth
+                size='small'
+                label='Search customers'
+                value={search}
+                onChange={event => {
+                  setSearch(event.target.value)
+                  setSelectedCustomerId(null)
+                }}
+                placeholder='Name, address, phone, or email'
+              />
+              <Button
+                variant='outlined'
+                onClick={() => {
+                  setSelectedCustomerId(null)
+                  setFormError('')
+                  setForm(EMPTY_FORM)
+                }}
+              >
+                New
+              </Button>
+            </Box>
+            <Divider />
             <List disablePadding>
               {customers.map(customer => (
                 <ListItemButton
@@ -81,10 +146,50 @@ export default function CustomersPage() {
           </CardContent>
         </Card>
 
+        <Card sx={{ flex: 1.5, border: '1px solid', borderColor: 'divider', minHeight: 380 }}>
+          <CardContent>
+            <Stack spacing={1.25}>
+              <Typography variant='h6' fontWeight={700}>
+                {isEditingExisting ? 'Edit customer' : 'Create customer'}
+              </Typography>
+              {formError && <Alert severity='error'>{formError}</Alert>}
+              <TextField label='Name' value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} required />
+              <TextField
+                label='Default address'
+                value={form.defaultAddress}
+                onChange={event => setForm({ ...form, defaultAddress: event.target.value })}
+              />
+              <TextField label='Phone' value={form.phoneNumber} onChange={event => setForm({ ...form, phoneNumber: event.target.value })} />
+              <TextField label='Email' value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} />
+
+              <Stack direction='row' gap={1}>
+                <Button
+                  variant='contained'
+                  disabled={isSaving || !form.name.trim()}
+                  onClick={() => {
+                    if (isEditingExisting) {
+                      updateMutation.mutate()
+                      return
+                    }
+                    createMutation.mutate()
+                  }}
+                >
+                  {isEditingExisting ? 'Save changes' : 'Create customer'}
+                </Button>
+                {!isEditingExisting && (
+                  <Button variant='outlined' onClick={() => setForm(EMPTY_FORM)}>
+                    Clear
+                  </Button>
+                )}
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
+
         <Card sx={{ flex: 2, border: '1px solid', borderColor: 'divider', minHeight: 380 }}>
           <CardContent>
             {!selectedCustomer ? (
-              <Typography color='text.secondary'>Select a customer to view details and jobs.</Typography>
+              <Typography color='text.secondary'>Select a customer to view all linked jobs.</Typography>
             ) : (
               <Stack spacing={1.5}>
                 <Box>
