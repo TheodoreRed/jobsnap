@@ -7,10 +7,12 @@ import {
   Card,
   CardContent,
   Divider,
+  FormControlLabel,
   Grid,
   IconButton,
   MenuItem,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material'
@@ -39,6 +41,12 @@ export default function JobDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
+  const [reportSettings, setReportSettings] = useState({
+    title: 'Field Service Photo Report',
+    subtitle: 'Work completed summary',
+    includeJobDetails: true,
+    includePhotoNotes: true,
+  })
 
   const jobQuery = useQuery({
     queryKey: ['job', jobId],
@@ -263,19 +271,17 @@ export default function JobDetailPage() {
       return commands
     }
 
-    const summaryLines = [
-      `Generated ${new Date().toLocaleString()}`,
-      '',
-      `Job Title: ${detail.job.title}`,
-      `Customer: ${detail.job.customerName}`,
-      `Address: ${detail.job.address}`,
-      `Status: ${detail.job.status}`,
-      `Total Photos: ${sortedPhotos.length}`,
-      '',
-      'Photos are shown on the following pages in the same order as the job photo list.',
-    ]
+    const summaryLines = [`Generated ${new Date().toLocaleString()}`, '', `Total Photos: ${sortedPhotos.length}`, '']
+    if (reportSettings.includeJobDetails) {
+      summaryLines.push(`Job Title: ${detail.job.title}`)
+      summaryLines.push(`Customer: ${detail.job.customerName}`)
+      summaryLines.push(`Address: ${detail.job.address}`)
+      summaryLines.push(`Status: ${detail.job.status}`)
+      summaryLines.push('')
+    }
+    summaryLines.push('Photos are shown on the following pages in the same order as the job photo list.')
 
-    const summaryCommands = buildHeaderCommands('Field Service Photo Report', `Work Order ${detail.job.workOrderReference ?? '-'}`)
+    const summaryCommands = buildHeaderCommands(reportSettings.title, `${reportSettings.subtitle} • Work Order ${detail.job.workOrderReference ?? '-'}`)
 
     let summaryY = contentTop - 28
     for (const line of summaryLines) {
@@ -343,10 +349,12 @@ export default function JobDetailPage() {
           commands.push('BT', '/F1 10 Tf', '0.62 0.19 0.14 rg', `${cardInnerX} ${cardBottom + cardHeight / 2} Td`, `(${escapePdfText('Unable to render this image in PDF.')}) Tj`, 'ET')
         }
 
-        let noteY = cardBottom + 28
-        for (const chunk of wrapByChars(`Notes: ${photo.caption || 'No caption provided.'}`, 88).slice(0, 2)) {
-          commands.push('BT', '/F1 9 Tf', '0.14 0.16 0.20 rg', `${cardInnerX} ${noteY} Td`, `(${escapePdfText(chunk)}) Tj`, 'ET')
-          noteY -= 12
+        if (reportSettings.includePhotoNotes) {
+          let noteY = cardBottom + 28
+          for (const chunk of wrapByChars(`Notes: ${photo.caption || 'No caption provided.'}`, 88).slice(0, 2)) {
+            commands.push('BT', '/F1 9 Tf', '0.14 0.16 0.20 rg', `${cardInnerX} ${noteY} Td`, `(${escapePdfText(chunk)}) Tj`, 'ET')
+            noteY -= 12
+          }
         }
 
         currentTopY = cardBottom - cardGap
@@ -448,6 +456,47 @@ export default function JobDetailPage() {
       </Stack>
 
       <Grid container spacing={2}>
+        <Grid size={{ xs: 12 }}>
+          <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
+            <CardContent>
+              <Stack spacing={1.5}>
+                <Typography variant='h6' fontWeight={700}>
+                  Report Customization
+                </Typography>
+                <TextField
+                  label='Report Title'
+                  value={reportSettings.title}
+                  onChange={event => setReportSettings(settings => ({ ...settings, title: event.target.value }))}
+                />
+                <TextField
+                  label='Report Subtitle'
+                  value={reportSettings.subtitle}
+                  onChange={event => setReportSettings(settings => ({ ...settings, subtitle: event.target.value }))}
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={reportSettings.includeJobDetails}
+                        onChange={event => setReportSettings(settings => ({ ...settings, includeJobDetails: event.target.checked }))}
+                      />
+                    }
+                    label='Include job details'
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={reportSettings.includePhotoNotes}
+                        onChange={event => setReportSettings(settings => ({ ...settings, includePhotoNotes: event.target.checked }))}
+                      />
+                    }
+                    label='Include photo notes'
+                  />
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
         <Grid size={{ xs: 12, md: 5 }}>
           <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
