@@ -6,6 +6,12 @@ import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from '@mui/mat
 import { apiRequest } from '@/lib/api'
 import type { Job } from '@/features/jobs/types'
 
+type Customer = {
+  id: string
+  name: string
+  primaryAddress: string
+}
+
 export default function CustomerDetailPage() {
   const { customerName: encodedCustomerName } = useParams()
   const customerName = decodeURIComponent(encodedCustomerName ?? '')
@@ -16,6 +22,11 @@ export default function CustomerDetailPage() {
     enabled: Boolean(customerName)
   })
 
+  const customerQuery = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => apiRequest<{ items: Customer[] }>('/customers')
+  })
+
   const jobs = useMemo(
     () =>
       (query.data?.items ?? [])
@@ -24,7 +35,11 @@ export default function CustomerDetailPage() {
     [customerName, query.data?.items]
   )
 
-  const latestAddress = jobs[0]?.address
+  const customerRecord = useMemo(
+    () => customerQuery.data?.items.find(item => item.name === customerName),
+    [customerName, customerQuery.data?.items]
+  )
+  const latestAddress = customerRecord?.primaryAddress || jobs[0]?.address
 
   return (
     <Box sx={{ width: '100%', maxWidth: 960, mx: 'auto' }}>

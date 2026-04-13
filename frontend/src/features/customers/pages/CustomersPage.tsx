@@ -1,49 +1,58 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Box, Button, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material'
 
 import { apiRequest } from '@/lib/api'
-import type { Job } from '@/features/jobs/types'
 
 type CustomerSummary = {
+  id: string
   name: string
   jobCount: number
   primaryAddress: string
-  lastUpdatedAt: string
+  latestJobUpdatedAt?: string | null
 }
 
 export default function CustomersPage() {
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({ name: '', primaryAddress: '' })
+
   const query = useQuery({
     queryKey: ['customers'],
-    queryFn: () => apiRequest<{ items: Job[] }>('/jobs')
+    queryFn: () => apiRequest<{ items: CustomerSummary[] }>('/customers')
   })
 
   const customers = useMemo<CustomerSummary[]>(() => {
-    const map = new Map<string, CustomerSummary>()
-
-    for (const job of query.data?.items ?? []) {
-      const key = job.customerName.trim() || 'Unassigned customer'
-      const existing = map.get(key)
-      if (!existing) {
-        map.set(key, {
-          name: key,
-          jobCount: 1,
-          primaryAddress: job.address,
-          lastUpdatedAt: job.updatedAt
-        })
-        continue
-      }
-
-      existing.jobCount += 1
-      if (new Date(job.updatedAt).getTime() > new Date(existing.lastUpdatedAt).getTime()) {
-        existing.lastUpdatedAt = job.updatedAt
-        existing.primaryAddress = job.address
-      }
-    }
-
-    return [...map.values()].sort((a, b) => b.jobCount - a.jobCount || a.name.localeCompare(b.name))
+    return [...(query.data?.items ?? [])].sort((a, b) => b.jobCount - a.jobCount || a.name.localeCompare(b.name))
   }, [query.data?.items])
+
+  const createCustomer = async () => {
+    if (!form.name.trim()) {
+      setError('Customer name is required.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      await apiRequest('/customers', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: form.name.trim(),
+          primaryAddress: form.primaryAddress.trim() || undefined
+        })
+      })
+      setCreateOpen(false)
+      setForm({ name: '', primaryAddress: '' })
+      await queryClient.invalidateQueries({ queryKey: ['customers'] })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to create customer right now.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Box sx={{ width: '100%', maxWidth: 900, mx: 'auto' }}>
@@ -51,7 +60,7 @@ export default function CustomersPage() {
         <Typography variant='h5' fontWeight={700}>
           Customers
         </Typography>
-        <Button component={RouterLink} to='/jobs/new' variant='contained'>
+        <Button variant='contained' onClick={() => setCreateOpen(true)}>
           Add Customer
         </Button>
       </Stack>
@@ -75,7 +84,7 @@ export default function CustomersPage() {
                 </Box>
                 <Stack direction='row' spacing={1} alignItems='center'>
                   <Chip label={`${customer.jobCount} jobs`} />
-                  <Typography variant='caption'>Updated {new Date(customer.lastUpdatedAt).toLocaleString()}</Typography>
+                  {customer.latestJobUpdatedAt && <Typography variant='caption'>Updated {new Date(customer.latestJobUpdatedAt).toLocaleString()}</Typography>}
                 </Stack>
               </Stack>
             </CardContent>
@@ -85,6 +94,28 @@ export default function CustomersPage() {
         {!query.isLoading && customers.length === 0 && <Typography color='text.secondary'>No customers found yet.</Typography>}
         {query.isLoading && <Typography color='text.secondary'>Loading customers...</Typography>}
       </Stack>
+
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth='sm'>
+        <DialogTitle>Add Customer</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Stack spacing={1.5}>
+            {error && <Alert severity='error'>{error}</Alert>}
+            <TextField label='Customer name' value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} autoFocus required />
+            <TextField
+              label='Primary service address (optional)'
+              value={form.primaryAddress}
+              onChange={e => setForm(prev => ({ ...prev, primaryAddress: e.target.value }))}
+              placeholder='Enter main service location'
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button variant='contained' onClick={() => void createCustomer()} disabled={saving}>
+            Save Customer
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
