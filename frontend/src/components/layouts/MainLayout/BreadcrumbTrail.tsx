@@ -2,7 +2,10 @@ import { Breadcrumbs, Link, Typography } from '@mui/material'
 import NavigateNextIcon from '@mui/icons-material/NavigateNext'
 import { Link as RouterLink, matchPath, useLocation } from 'react-router-dom'
 import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useT } from '@/i18n/useT'
+import { apiRequest } from '@/lib/api'
+import type { JobDetailResponse } from '@/features/jobs/types'
 
 type BreadcrumbDefinition = {
   pattern: string
@@ -30,6 +33,14 @@ export function BreadcrumbTrail() {
   const location = useLocation()
   const t = useT('mainLayout')
 
+  const currentJobId = matchPath({ path: '/jobs/:jobId/*', end: false }, location.pathname)?.params.jobId
+
+  const currentJobQuery = useQuery({
+    queryKey: ['job', currentJobId],
+    queryFn: () => apiRequest<JobDetailResponse>(`/jobs/${currentJobId}`),
+    enabled: Boolean(currentJobId)
+  })
+
   const breadcrumbDefinitions = useMemo<BreadcrumbDefinition[]>(
     () => [
       {
@@ -45,8 +56,20 @@ export function BreadcrumbTrail() {
         getLabel: () => t('settings')
       },
       {
+        pattern: '/about',
+        getLabel: () => t('about')
+      },
+      {
         pattern: '/analytics',
         getLabel: () => t('analytics')
+      },
+      {
+        pattern: '/customers',
+        getLabel: () => t('customers')
+      },
+      {
+        pattern: '/customers/:customerName',
+        getLabel: params => decodeURIComponent(params.customerName ?? '')
       },
       {
         pattern: '/jobs/new',
@@ -54,14 +77,20 @@ export function BreadcrumbTrail() {
       },
       {
         pattern: '/jobs/:jobId',
-        getLabel: params => t('jobDetails', { id: truncateMiddle(params.jobId ?? '', JOB_ID_LABEL_MAX_LENGTH) })
+        getLabel: params => {
+          if (params.jobId && params.jobId === currentJobId && currentJobQuery.data?.job.title) {
+            return currentJobQuery.data.job.title
+          }
+
+          return t('jobDetails', { id: truncateMiddle(params.jobId ?? '', JOB_ID_LABEL_MAX_LENGTH) })
+        }
       },
       {
         pattern: '/jobs/:jobId/report',
         getLabel: () => t('report')
       }
     ],
-    [t]
+    [currentJobId, currentJobQuery.data?.job.title, t]
   )
 
   const crumbs = useMemo<Crumb[]>(() => {

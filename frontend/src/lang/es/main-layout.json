@@ -3,8 +3,10 @@
   "home": "Inicio",
   "dashboard": "Panel",
   "settings": "Configuración",
+  "about": "Acerca de",
   "newJob": "Nuevo empleo",
   "jobDetails": "Empleo {id}",
   "report": "Informe",
+  "customers": "Clientes",
   "analytics": "Analíticas"
 }

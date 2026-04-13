@@ -21,6 +21,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import HomeIcon from '@mui/icons-material/Home'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import AnalyticsIcon from '@mui/icons-material/Analytics'
+import PeopleIcon from '@mui/icons-material/People'
 import SettingsIcon from '@mui/icons-material/Settings'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
@@ -51,6 +52,7 @@ const MainLayout = () => {
     { label: t('home'), path: '/', icon: <HomeIcon /> },
     { label: t('dashboard'), path: '/dashboard', icon: <DashboardIcon /> },
     { label: t('analytics'), path: '/analytics', icon: <AnalyticsIcon /> },
+    { label: t('customers'), path: '/customers', icon: <PeopleIcon /> },
     { label: t('settings'), path: '/settings', icon: <SettingsIcon /> }
   ]
 

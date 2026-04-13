@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Avatar, Box, Chip, Divider, IconButton, ListItemIcon, Menu, MenuItem, Typography } from '@mui/material'
 import SettingsIcon from '@mui/icons-material/Settings'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import LogoutIcon from '@mui/icons-material/Logout'
 import { useMsal } from '@azure/msal-react'
 import { useNavigate } from 'react-router-dom'
@@ -123,6 +124,18 @@ export function AccountMenu() {
             <SettingsIcon fontSize='small' />
           </ListItemIcon>
           Settings
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => {
+            setAnchorEl(null)
+            navigate('/about')
+          }}
+        >
+          <ListItemIcon>
+            <InfoOutlinedIcon fontSize='small' />
+          </ListItemIcon>
+          About
         </MenuItem>
 
         <MenuItem onClick={handleLogout}>

@@ -3,8 +3,10 @@
   "home": "Home",
   "dashboard": "Dashboard",
   "settings": "Settings",
+  "about": "About",
   "newJob": "New Job",
   "jobDetails": "Job {id}",
   "report": "Report",
+  "customers": "Customers",
   "analytics": "Analytics"
 }

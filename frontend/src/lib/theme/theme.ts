@@ -10,6 +10,12 @@ export const createAppTheme = (mode: 'light' | 'dark') =>
         dark: '#2952d9',
         contrastText: '#ffffff'
       },
+      secondary: {
+        main: mode === 'dark' ? '#22c55e' : '#15803d',
+        light: mode === 'dark' ? '#4ade80' : '#22c55e',
+        dark: mode === 'dark' ? '#16a34a' : '#166534',
+        contrastText: '#ffffff'
+      },
       background: {
         default: mode === 'dark' ? '#12131c' : '#f0f2fa',
         paper: mode === 'dark' ? '#1a1b27' : '#ffffff'
