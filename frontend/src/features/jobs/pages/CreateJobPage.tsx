@@ -1,22 +1,34 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Alert, Button, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { useQuery } from '@tanstack/react-query'
 
 import { apiRequest } from '@/lib/api'
 import type { Job, JobStatus } from '../types'
 
+type CustomerOption = { name: string }
+
 export default function CreateJobPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const prefilledCustomerName = searchParams.get('customerName') ?? ''
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     title: '',
-    customerName: '',
+    customerName: prefilledCustomerName,
     address: '',
     workOrderReference: '',
     description: '',
     status: 'Draft' as JobStatus,
   })
+  const customersQuery = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => apiRequest<{ items: CustomerOption[] }>('/customers')
+  })
+  const customerNames = Array.from(
+    new Set([...(customersQuery.data?.items ?? []).map(customer => customer.name), form.customerName].filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b))
 
   const onSave = async () => {
     setSaving(true)
@@ -27,8 +39,8 @@ export default function CreateJobPage() {
         body: JSON.stringify(form),
       })
       navigate(`/jobs/${created.id}`)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to create job right now.')
     } finally {
       setSaving(false)
     }
@@ -43,11 +55,18 @@ export default function CreateJobPage() {
       <TextField variant='outlined' label='Job title' value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required />
       <TextField
         variant='outlined'
+        select
         label='Customer name'
         value={form.customerName}
         onChange={e => setForm({ ...form, customerName: e.target.value })}
         required
-      />
+      >
+        {customerNames.map(name => (
+          <MenuItem key={name} value={name}>
+            {name}
+          </MenuItem>
+        ))}
+      </TextField>
       <TextField variant='outlined' label='Service address' value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} required />
       <TextField
         variant='outlined'

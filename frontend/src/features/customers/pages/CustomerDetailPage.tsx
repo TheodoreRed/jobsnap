@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link as RouterLink, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
 
 import { apiRequest } from '@/lib/api'
 import type { Job } from '@/features/jobs/types'
@@ -51,6 +51,9 @@ export default function CustomerDetailPage() {
           Primary service address: {latestAddress}
         </Typography>
       )}
+      <Button component={RouterLink} to={`/jobs/new?customerName=${encodeURIComponent(customerName)}`} variant='contained' sx={{ mb: 2 }}>
+        Add Job for This Customer
+      </Button>
 
       {query.isError && <Alert severity='error'>Unable to load customer jobs right now.</Alert>}
 

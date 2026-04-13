@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, CardContent, Stack, Typography } from '@mui/material'
+import { Button, Card, CardContent, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material'
 
 import { apiRequest } from '@/lib/api'
 
@@ -9,6 +9,14 @@ interface ReportItem {
   generatedAt: string
   fileReference: string
   fileName?: string
+}
+
+const REPORT_SETTINGS_STORAGE_KEY = 'jobsnap-report-settings'
+const DEFAULT_REPORT_SETTINGS = {
+  title: 'Field Service Photo Report',
+  subtitle: 'Work completed summary',
+  includeJobDetails: true,
+  includePhotoNotes: true,
 }
 
 export default function ReportPage() {
@@ -25,6 +33,7 @@ export default function ReportPage() {
         }
       : null
   )
+  const [reportSettings, setReportSettings] = useState(DEFAULT_REPORT_SETTINGS)
 
   useEffect(() => {
     if (report || !jobId) return
@@ -32,6 +41,16 @@ export default function ReportPage() {
       if (response.items[0]) setReport(response.items[0])
     })
   }, [jobId, report])
+
+  useEffect(() => {
+    const raw = globalThis.localStorage?.getItem(REPORT_SETTINGS_STORAGE_KEY)
+    if (!raw) return
+    try {
+      setReportSettings(settings => ({ ...settings, ...(JSON.parse(raw) as Partial<typeof DEFAULT_REPORT_SETTINGS>) }))
+    } catch {
+      setReportSettings(DEFAULT_REPORT_SETTINGS)
+    }
+  }, [])
 
   if (!report) return <Typography>No report available yet.</Typography>
 
@@ -48,6 +67,49 @@ export default function ReportPage() {
           <Stack spacing={1}>
             <Typography variant='body2'>Generated at: {new Date(report.generatedAt).toLocaleString()}</Typography>
             <Typography variant='body2'>File: {fileName}</Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+      <Card variant='outlined'>
+        <CardContent>
+          <Stack spacing={1.5}>
+            <Typography variant='h6'>Report Customization</Typography>
+            <TextField
+              label='Report Title'
+              value={reportSettings.title}
+              onChange={event => setReportSettings(settings => ({ ...settings, title: event.target.value }))}
+            />
+            <TextField
+              label='Report Subtitle'
+              value={reportSettings.subtitle}
+              onChange={event => setReportSettings(settings => ({ ...settings, subtitle: event.target.value }))}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={reportSettings.includeJobDetails}
+                  onChange={event => setReportSettings(settings => ({ ...settings, includeJobDetails: event.target.checked }))}
+                />
+              }
+              label='Include job details'
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={reportSettings.includePhotoNotes}
+                  onChange={event => setReportSettings(settings => ({ ...settings, includePhotoNotes: event.target.checked }))}
+                />
+              }
+              label='Include photo notes'
+            />
+            <Button
+              variant='outlined'
+              onClick={() => {
+                globalThis.localStorage?.setItem(REPORT_SETTINGS_STORAGE_KEY, JSON.stringify(reportSettings))
+              }}
+            >
+              Save Report Settings
+            </Button>
           </Stack>
         </CardContent>
       </Card>

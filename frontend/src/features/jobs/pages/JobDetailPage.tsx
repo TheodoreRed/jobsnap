@@ -7,12 +7,10 @@ import {
   Card,
   CardContent,
   Divider,
-  FormControlLabel,
   Grid,
   IconButton,
   MenuItem,
   Stack,
-  Switch,
   TextField,
   Typography,
 } from '@mui/material'
@@ -26,6 +24,13 @@ import { apiRequest } from '@/lib/api'
 import type { JobDetailResponse, Photo, PhotoTag } from '../types'
 
 const tags: PhotoTag[] = ['Before', 'During', 'After', 'Other']
+const REPORT_SETTINGS_STORAGE_KEY = 'jobsnap-report-settings'
+const DEFAULT_REPORT_SETTINGS = {
+  title: 'Field Service Photo Report',
+  subtitle: 'Work completed summary',
+  includeJobDetails: true,
+  includePhotoNotes: true,
+}
 
 async function fileToDataUrl(file: File): Promise<string> {
   return await new Promise((resolve, reject) => {
@@ -41,12 +46,6 @@ export default function JobDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
-  const [reportSettings, setReportSettings] = useState({
-    title: 'Field Service Photo Report',
-    subtitle: 'Work completed summary',
-    includeJobDetails: true,
-    includePhotoNotes: true,
-  })
 
   const jobQuery = useQuery({
     queryKey: ['job', jobId],
@@ -82,8 +81,8 @@ export default function JobDetailPage() {
         })
       }
       await refresh()
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to upload photos right now.')
     }
   }
 
@@ -113,6 +112,15 @@ export default function JobDetailPage() {
 
   const generatePdf = async () => {
     if (!detail) return
+    const reportSettings = (() => {
+      const raw = globalThis.localStorage?.getItem(REPORT_SETTINGS_STORAGE_KEY)
+      if (!raw) return DEFAULT_REPORT_SETTINGS
+      try {
+        return { ...DEFAULT_REPORT_SETTINGS, ...(JSON.parse(raw) as Partial<typeof DEFAULT_REPORT_SETTINGS>) }
+      } catch {
+        return DEFAULT_REPORT_SETTINGS
+      }
+    })()
 
     const sanitizePdfText = (value: string) =>
       value
@@ -456,47 +464,6 @@ export default function JobDetailPage() {
       </Stack>
 
       <Grid container spacing={2}>
-        <Grid size={{ xs: 12 }}>
-          <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
-            <CardContent>
-              <Stack spacing={1.5}>
-                <Typography variant='h6' fontWeight={700}>
-                  Report Customization
-                </Typography>
-                <TextField
-                  label='Report Title'
-                  value={reportSettings.title}
-                  onChange={event => setReportSettings(settings => ({ ...settings, title: event.target.value }))}
-                />
-                <TextField
-                  label='Report Subtitle'
-                  value={reportSettings.subtitle}
-                  onChange={event => setReportSettings(settings => ({ ...settings, subtitle: event.target.value }))}
-                />
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={reportSettings.includeJobDetails}
-                        onChange={event => setReportSettings(settings => ({ ...settings, includeJobDetails: event.target.checked }))}
-                      />
-                    }
-                    label='Include job details'
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={reportSettings.includePhotoNotes}
-                        onChange={event => setReportSettings(settings => ({ ...settings, includePhotoNotes: event.target.checked }))}
-                      />
-                    }
-                    label='Include photo notes'
-                  />
-                </Stack>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
         <Grid size={{ xs: 12, md: 5 }}>
           <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
             <CardContent>
