@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useT } from '@/i18n/useT'
 import { apiRequest } from '@/lib/api'
 import type { JobDetailResponse } from '@/features/jobs/types'
+import type { CustomerDetailResponse } from '@/features/customers/types'
 
 type BreadcrumbDefinition = {
   pattern: string
@@ -34,11 +35,17 @@ export function BreadcrumbTrail() {
   const t = useT('mainLayout')
 
   const currentJobId = matchPath({ path: '/jobs/:jobId/*', end: false }, location.pathname)?.params.jobId
+  const currentCustomerId = matchPath({ path: '/customers/:customerId/*', end: false }, location.pathname)?.params.customerId
 
   const currentJobQuery = useQuery({
     queryKey: ['job', currentJobId],
     queryFn: () => apiRequest<JobDetailResponse>(`/jobs/${currentJobId}`),
     enabled: Boolean(currentJobId)
+  })
+  const currentCustomerQuery = useQuery({
+    queryKey: ['customer', currentCustomerId],
+    queryFn: () => apiRequest<CustomerDetailResponse>(`/customers/${currentCustomerId}`),
+    enabled: Boolean(currentCustomerId)
   })
 
   const breadcrumbDefinitions = useMemo<BreadcrumbDefinition[]>(
@@ -68,6 +75,16 @@ export function BreadcrumbTrail() {
         getLabel: () => t('customers')
       },
       {
+        pattern: '/customers/:customerId',
+        getLabel: params => {
+          if (params.customerId && params.customerId === currentCustomerId && currentCustomerQuery.data?.customer.name) {
+            return currentCustomerQuery.data.customer.name
+          }
+
+          return 'Customer'
+        }
+      },
+      {
         pattern: '/jobs/new',
         getLabel: () => t('newJob')
       },
@@ -86,7 +103,7 @@ export function BreadcrumbTrail() {
         getLabel: () => t('report')
       }
     ],
-    [currentJobId, currentJobQuery.data?.job.title, t]
+    [currentCustomerId, currentCustomerQuery.data?.customer.name, currentJobId, currentJobQuery.data?.job.title, t]
   )
 
   const crumbs = useMemo<Crumb[]>(() => {

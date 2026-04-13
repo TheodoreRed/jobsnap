@@ -1,21 +1,18 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Autocomplete, Button, Checkbox, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { Alert, Autocomplete, Button, Link, MenuItem, Stack, TextField, Typography } from '@mui/material'
 
 import { apiRequest } from '@/lib/api'
 import type { Customer } from '@/features/customers/types'
 import type { Job, JobStatus } from '../types'
 
-function normalizeName(value: string) {
-  return value.trim().toLowerCase()
-}
-
 export default function CreateJobPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const prefilledCustomerId = searchParams.get('customerId') ?? ''
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [saveCustomer, setSaveCustomer] = useState(true)
   const [form, setForm] = useState({
     title: '',
     customerName: '',
@@ -31,15 +28,29 @@ export default function CreateJobPage() {
     queryFn: () => apiRequest<{ items: Customer[] }>('/customers'),
   })
 
-  const customers = customersQuery.data?.items ?? []
-  const existingCustomerMatch = useMemo(
-    () => customers.find(customer => normalizeName(customer.name) === normalizeName(form.customerName)),
-    [customers, form.customerName]
+  const customers = useMemo(() => customersQuery.data?.items ?? [], [customersQuery.data?.items])
+  const selectedCustomer = useMemo(() => customers.find(customer => customer.id === form.customerId) ?? null, [customers, form.customerId])
+  const prefilledCustomer = useMemo(
+    () => customers.find(customer => customer.id === prefilledCustomerId) ?? null,
+    [customers, prefilledCustomerId]
   )
 
-  const shouldShowSaveCustomer = Boolean(form.customerName.trim()) && !existingCustomerMatch
+  useEffect(() => {
+    if (!prefilledCustomer || form.customerId) return
+    setForm(current => ({
+      ...current,
+      customerName: prefilledCustomer.name,
+      customerId: prefilledCustomer.id,
+      address: prefilledCustomer.defaultAddress ?? current.address,
+    }))
+  }, [prefilledCustomer, form.customerId])
 
   const onSave = async () => {
+    if (!selectedCustomer) {
+      setError('Please select an existing customer before saving the job.')
+      return
+    }
+
     setSaving(true)
     setError('')
     try {
@@ -47,13 +58,13 @@ export default function CreateJobPage() {
         method: 'POST',
         body: JSON.stringify({
           ...form,
-          customerId: existingCustomerMatch?.id || undefined,
-          saveCustomer: shouldShowSaveCustomer ? saveCustomer : false,
+          customerName: selectedCustomer.name,
+          customerId: selectedCustomer.id,
         }),
       })
       navigate(`/jobs/${created.id}`)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to save job')
     } finally {
       setSaving(false)
     }
@@ -67,11 +78,8 @@ export default function CreateJobPage() {
       {error && <Alert severity='error'>{error}</Alert>}
       <TextField variant='outlined' label='Job title' value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required />
       <Autocomplete
-        freeSolo
         options={customers}
-        value={existingCustomerMatch ?? null}
-        inputValue={form.customerName}
-        onInputChange={(_, value) => setForm({ ...form, customerName: value, customerId: '' })}
+        value={selectedCustomer}
         onChange={(_, selected) => {
           if (!selected || typeof selected === 'string') return
           setForm({
@@ -82,15 +90,16 @@ export default function CreateJobPage() {
           })
         }}
         getOptionLabel={option => (typeof option === 'string' ? option : option.name)}
-        renderInput={params => <TextField {...params} label='Customer name' required />}
+        renderInput={params => <TextField {...params} label='Customer' required helperText='Choose from existing customers only.' />}
       />
       <TextField variant='outlined' label='Service address' value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} required />
-      {shouldShowSaveCustomer ? (
-        <FormControlLabel
-          control={<Checkbox checked={saveCustomer} onChange={event => setSaveCustomer(event.target.checked)} />}
-          label='Save this customer'
-        />
-      ) : null}
+      <Typography variant='body2' color='text.secondary'>
+        Need a new customer first? Create one on the{' '}
+        <Link component={RouterLink} to='/customers' underline='hover'>
+          customers page
+        </Link>
+        .
+      </Typography>
       <TextField
         variant='outlined'
         label='Work order / invoice ref (optional)'
@@ -111,7 +120,7 @@ export default function CreateJobPage() {
         <MenuItem value='Complete'>Complete</MenuItem>
       </TextField>
       <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} sx={{ pt: 0.5, alignItems: { sm: 'center' } }}>
-        <Button variant='contained' onClick={onSave} disabled={saving}>
+        <Button variant='contained' onClick={onSave} disabled={saving || !selectedCustomer}>
           Save
         </Button>
         <Button variant='outlined' onClick={() => navigate('/')}>

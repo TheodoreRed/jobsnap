@@ -14,6 +14,7 @@ const JobDetailPage = lazy(() => import('@/features/jobs/pages/JobDetailPage'))
 const ReportPage = lazy(() => import('@/features/reports/pages/ReportPage'))
 const AnalyticsPage = lazy(() => import('@/features/analytics/pages/AnalyticsPage'))
 const CustomersPage = lazy(() => import('@/features/customers/pages/CustomersPage'))
+const CustomerDetailPage = lazy(() => import('@/features/customers/pages/CustomerDetailPage'))
 const AboutPage = lazy(() => import('@/features/about/pages/AboutPage'))
 
 function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -38,6 +39,7 @@ export function AppRouter() {
             <Route path='/dashboard' element={<DashboardPage />} />
             <Route path='/analytics' element={<AnalyticsPage />} />
             <Route path='/customers' element={<CustomersPage />} />
+            <Route path='/customers/:customerId' element={<CustomerDetailPage />} />
             <Route path='/jobs/new' element={<CreateJobPage />} />
             <Route path='/jobs/:jobId' element={<JobDetailPage />} />
             <Route path='/jobs/:jobId/report' element={<ReportPage />} />
