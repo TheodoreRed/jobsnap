@@ -1,4 +1,4 @@
-import mongoose, { Schema, type InferSchemaType } from 'mongoose'
+import mongoose, { Schema, Types, type InferSchemaType } from 'mongoose'
 
 export const JOB_STATUSES = ['Draft', 'In Progress', 'Complete'] as const
 
@@ -6,6 +6,7 @@ const jobSchema = new Schema(
   {
     title: { type: String, required: true, trim: true },
     customerName: { type: String, required: true, trim: true },
+    customerId: { type: Types.ObjectId, ref: 'Customer' },
     address: { type: String, required: true, trim: true },
     workOrderReference: { type: String, trim: true },
     description: { type: String, trim: true },

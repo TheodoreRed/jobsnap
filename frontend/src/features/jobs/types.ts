@@ -15,6 +15,7 @@ export interface Job {
   id: string
   title: string
   customerName: string
+  customerId?: string
   address: string
   workOrderReference?: string
   description?: string

@@ -1,7 +1,9 @@
+import mongoose from 'mongoose'
 import { app } from '@azure/functions'
 import { z } from 'zod'
 
 import { connectDb } from '../mongodb/client'
+import { upsertCustomerFromJob } from './customers'
 import { JobModel, JOB_STATUSES } from '../models/job.model'
 import { PhotoModel } from '../models/photo.model'
 import { badRequest, createdResponse, internalServerError, notFound, okResponse } from '../utils/response'
@@ -9,6 +11,8 @@ import { badRequest, createdResponse, internalServerError, notFound, okResponse 
 const jobInputSchema = z.object({
   title: z.string().trim().min(1),
   customerName: z.string().trim().min(1),
+  customerId: z.string().trim().optional(),
+  saveCustomer: z.boolean().optional(),
   address: z.string().trim().min(1),
   workOrderReference: z.string().trim().optional(),
   description: z.string().trim().optional(),
@@ -16,15 +20,20 @@ const jobInputSchema = z.object({
   status: z.enum(JOB_STATUSES).default('Draft'),
 })
 
-const jobPatchSchema = jobInputSchema.partial().refine(payload => Object.keys(payload).length > 0, {
-  message: 'At least one field is required',
-})
+const jobPatchSchema = jobInputSchema
+  .omit({ saveCustomer: true, customerId: true })
+  .partial()
+  .refine(payload => Object.keys(payload).length > 0, {
+    message: 'At least one field is required',
+  })
+
 
 function normalizeJob(job: any, photoCount = 0) {
   return {
     id: String(job._id),
     title: job.title,
     customerName: job.customerName,
+    customerId: job.customerId ? String(job.customerId) : undefined,
     address: job.address,
     workOrderReference: job.workOrderReference,
     description: job.description,
@@ -46,28 +55,25 @@ app.http('jobsList', {
       await connectDb()
       const search = req.query.get('search')?.trim()
       const status = req.query.get('status')?.trim()
+      const customerId = req.query.get('customerId')?.trim()
 
       const filter: Record<string, unknown> = {}
       if (status && JOB_STATUSES.includes(status as (typeof JOB_STATUSES)[number])) {
         filter.status = status
       }
 
+      if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
+        filter.customerId = new mongoose.Types.ObjectId(customerId)
+      }
+
       if (search) {
         const regex = new RegExp(search, 'i')
-        filter.$or = [
-          { title: regex },
-          { customerName: regex },
-          { address: regex },
-          { workOrderReference: regex },
-        ]
+        filter.$or = [{ title: regex }, { customerName: regex }, { address: regex }, { workOrderReference: regex }]
       }
 
       const jobs = await JobModel.find(filter).sort({ updatedAt: -1 }).lean()
       const jobIds = jobs.map(job => job._id)
-      const counts = await PhotoModel.aggregate([
-        { $match: { jobId: { $in: jobIds } } },
-        { $group: { _id: '$jobId', count: { $sum: 1 } } },
-      ])
+      const counts = await PhotoModel.aggregate([{ $match: { jobId: { $in: jobIds } } }, { $group: { _id: '$jobId', count: { $sum: 1 } } }])
       const countMap = new Map(counts.map(entry => [String(entry._id), entry.count]))
 
       return okResponse({
@@ -91,7 +97,39 @@ app.http('jobsCreate', {
       const parsed = jobInputSchema.safeParse(body)
       if (!parsed.success) return badRequest(parsed.error.issues[0]?.message ?? 'Invalid job payload')
 
-      const created = await JobModel.create(parsed.data)
+      const payload = parsed.data
+      let resolvedCustomerId: mongoose.Types.ObjectId | undefined
+      let resolvedCustomerName = payload.customerName
+
+      if (payload.customerId) {
+        if (!mongoose.Types.ObjectId.isValid(payload.customerId)) {
+          return badRequest('Invalid customer id')
+        }
+      }
+
+      const customer = await upsertCustomerFromJob({
+        customerName: payload.customerName,
+        defaultAddress: payload.address,
+        saveCustomer: payload.saveCustomer,
+      })
+
+      if (customer) {
+        resolvedCustomerId = customer._id
+        resolvedCustomerName = customer.name
+      } else if (payload.customerId) {
+        resolvedCustomerId = new mongoose.Types.ObjectId(payload.customerId)
+      }
+
+      const created = await JobModel.create({
+        title: payload.title,
+        customerName: resolvedCustomerName,
+        customerId: resolvedCustomerId,
+        address: payload.address,
+        workOrderReference: payload.workOrderReference,
+        description: payload.description,
+        notes: payload.notes,
+        status: payload.status,
+      })
       return createdResponse(normalizeJob(created, 0))
     } catch (error) {
       console.error(error)
